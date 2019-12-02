@@ -1,0 +1,42 @@
+imports:
+  - QtQuick 2.11
+  - QtQuick.Layouts 1.11
+  - QtQuick.Controls 2.4
+  - QtQuick.Window 2.11
+root:
+  type: ApplicationWindow
+  components:
+    - type: Flow
+      id: flow
+      fill: true
+      components:
+        - type: Button
+          properties:
+            - name: color
+              value: green
+
+        - type: Button
+          properties:
+            - name: color
+              value: blue
+
+        - type: Button
+          properties:
+            - name: color
+              value: orange
+
+modules:
+  - name: Button
+    imports:
+      - QtQuick 2.11
+    definition:
+      type: Rectangle
+      properties:
+        - name: color
+          value: red
+
+        - name: width
+          value: "{root.width / flow.children.length}"
+
+        - name: height
+          value: 100vh
