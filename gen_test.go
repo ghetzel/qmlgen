@@ -15,5 +15,5 @@ func TestGenerateBasic(t *testing.T) {
 	win.Set(`visible`, true)
 	win.Set(`color`, `#FF00CC`)
 
-	assert.Equal("ApplicationWindow {\n  visible: true\n  color: \"#FF00CC\"\n}", win.String())
+	assert.Equal("ApplicationWindow {\n  visible: true;\n  color: \"#FF00CC\";\n}", win.String())
 }
