@@ -18,8 +18,6 @@ test:
 bin/qmlgen:
 	go build -o $(@) cmd/*.go
 
-app.qml: bin/qmlgen
-	./bin/qmlgen
-
 run:
+	./bin/qmlgen
 	cd build && qmlscene root.qml

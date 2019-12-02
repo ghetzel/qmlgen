@@ -1,42 +1,101 @@
+dependencies:
+  - name: jsonpath.js
+    source: https://raw.githubusercontent.com/kromain/qml-utils/e4cf5e0a0603d5861451929cb4cb005f117aefa4/JSONListModel/jsonpath.js
+
+  - name: JSONListModel.qml
+    source: https://raw.githubusercontent.com/kromain/qml-utils/e4cf5e0a0603d5861451929cb4cb005f117aefa4/JSONListModel/JSONListModel.qml
+
 imports:
   - QtQuick 2.11
   - QtQuick.Layouts 1.11
   - QtQuick.Controls 2.4
   - QtQuick.Window 2.11
+  - QtMultimedia 5.11
 root:
   type: ApplicationWindow
+  public:
+    - name: server
+      type: string
+      value: https://airstream.apps.gammazeta.net
+
+    - name: path
+      type: string
+      value: ""
+
+  properties:
+    color: "#66222222"
+    flags: "@Qt.TranslucentBackground"
+    onPathChanged: |
+      if (root.path.length) {
+        jlm.source = root.server + '/api/folders/browse?path=' + root.path;
+      } else {
+        jlm.source = root.server + '/api/folders';
+      }
+
   components:
-    - type: Flow
-      id: flow
+    # setup an audio player
+    - type: Audio
+      id: audio
+      properties:
+        onSourceChanged: |
+          console.debug('Play ' + audio.source);
+          audio.play();
+
+    # pull config from dingus
+    - type: JSONListModel
+      id: jlm
+      properties:
+        source: "{root.server + '/api/folders'}"
+
+    # build UI from config
+    - type: ListView
       fill: true
-      components:
-        - type: Button
-          properties:
-            - name: color
-              value: green
-
-        - type: Button
-          properties:
-            - name: color
-              value: blue
-
-        - type: Button
-          properties:
-            - name: color
-              value: orange
+      properties:
+        model: "@jlm.model"
+        delegate: "@Folder{}"
 
 modules:
-  - name: Button
+  - name: Ticker
+    imports:
+      - QtQuick 2.11
+    definition:
+      type: Timer
+      properties:
+        repeat: true
+        running: true
+  - name: FitText
+    imports:
+      - QtQuick 2.11
+    definition:
+      type: Text
+      properties:
+        width: "@parent.width"
+        height: "@parent.height"
+        fontSizeMode: "@Text.Fit"
+        font.pixelSize: "100vmax"
+        minimumPixelSize: "1vmin"
+        color: "black"
+        horizontalAlignment: "@Text.AlignHCenter"
+        verticalAlignment: "@Text.AlignVCenter"
+
+  - name: Folder
     imports:
       - QtQuick 2.11
     definition:
       type: Rectangle
       properties:
-        - name: color
-          value: red
+        color: transparent
+        width: 100vw
+        height: 10vh
+      components:
+        - type: FitText
+          properties:
+            text: "{model.id}"
 
-        - name: width
-          value: "{root.width / flow.children.length}"
-
-        - name: height
-          value: 100vh
+        - type: MouseArea
+          fill: true
+          properties:
+            onClicked: |
+              console.debug(model.id)
+              audio.source = root.server + '/api/entry/download?path=' + model.id;
+              root.path = model.id;

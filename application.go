@@ -3,6 +3,7 @@ package qmlgen
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -15,11 +16,12 @@ import (
 )
 
 type Application struct {
-	Imports    []string   `json:"imports,omitempty"`
-	Modules    []*Module  `json:"modules,omitempty"`
-	Root       *Component `json:"root,omitempty"`
-	ModuleRoot string     `json:"module_root"`
-	filename   string
+	Imports      []string     `json:"imports,omitempty"`
+	Dependencies []Dependency `json:"dependencies,omitempty"`
+	Modules      []*Module    `json:"modules,omitempty"`
+	Root         *Component   `json:"root,omitempty"`
+	ModuleRoot   string       `json:"module_root"`
+	filename     string
 }
 
 func LoadFile(yamlFilename string) (*Application, error) {
@@ -46,6 +48,40 @@ func LoadFile(yamlFilename string) (*Application, error) {
 	} else {
 		return nil, fmt.Errorf("path: %v", err)
 	}
+}
+
+func (self *Application) WriteDependencies() error {
+	for i, dep := range self.Dependencies {
+		if dep.Name == `` {
+			return fmt.Errorf("dependency %d: must provide a name", i)
+		}
+
+		if tgt := filepath.Join(self.ModuleRoot, dep.Name); fileutil.IsNonemptyFile(tgt) {
+			log.Debugf("dependency %q: %s", dep.Name, tgt)
+			continue
+		} else if rc, err := dep.Retrieve(); err == nil {
+			defer rc.Close()
+
+			if out, err := os.Create(tgt); err == nil {
+				defer out.Close()
+
+				if n, err := io.Copy(out, rc); err == nil {
+					log.Debugf("wrote dependency %q (%d bytes)", dep.Name, n)
+					out.Close()
+				} else {
+					return fmt.Errorf("write dependency %q: %v", dep.Name, err)
+				}
+			} else {
+				return fmt.Errorf("dependency %q: %v", dep.Name, err)
+			}
+
+			rc.Close()
+		} else {
+			return fmt.Errorf("dependency %q: %v", dep.Name, err)
+		}
+	}
+
+	return nil
 }
 
 func (self *Application) WriteModules() error {
@@ -99,11 +135,11 @@ func (self *Application) QML() ([]byte, error) {
 		}
 	}
 
-	if err := self.WriteModules(); err == nil {
-		// for _, mod := range self.Modules {
-		// 	out.WriteString(fmt.Sprintf("import \"%s\"\n", mod.Name))
-		// }
+	if err := self.WriteDependencies(); err != nil {
+		return nil, err
+	}
 
+	if err := self.WriteModules(); err == nil {
 		out.WriteString(fmt.Sprintf("import %q\n", `.`))
 	} else {
 		return nil, err
