@@ -4,9 +4,17 @@ import (
 	"bytes"
 	"fmt"
 	"strings"
+
+	"github.com/ghetzel/go-stockutil/typeutil"
 )
 
 const Indent = `  `
+
+type Layout struct {
+	Fill             string `json:"fill,omitempty"`
+	HorizontalCenter string `json:"center"`
+	VerticalCenter   string `json:"vcenter"`
+}
 
 type Component struct {
 	Type       string                 `json:"type,omitempty"`
@@ -14,7 +22,7 @@ type Component struct {
 	Public     Properties             `json:"public,omitempty"`
 	Properties map[string]interface{} `json:"properties,omitempty"`
 	Components []*Component           `json:"components,omitempty"`
-	Fill       string                 `json:"fill,omitempty"`
+	Layout     *Layout                `json:"layout,omitempty"`
 	private    Properties
 }
 
@@ -64,19 +72,7 @@ func (self *Component) QML(depth int) ([]byte, error) {
 	if err := self.Validate(); err == nil {
 		var out bytes.Buffer
 
-		// apply syntax sugar
-		switch strings.ToLower(self.Fill) {
-		case `true`, `yes`, `on`:
-			self.Set(`anchors.fill`, `@parent`)
-		case `false`, `no`, `off`, ``:
-			break
-		default:
-			if strings.HasPrefix(self.Fill, `@`) {
-				self.Set(`anchors.fill`, self.Fill)
-			} else {
-				return nil, fmt.Errorf("invalid fill %q", self.Fill)
-			}
-		}
+		self.applyLayoutProperties()
 
 		if self.ID != `` {
 			self.Set(`id`, self.ID)
@@ -112,6 +108,38 @@ func (self *Component) QML(depth int) ([]byte, error) {
 		return out.Bytes(), nil
 	} else {
 		return nil, err
+	}
+}
+
+func (self *Component) applyLayoutProperties() {
+	if layout := self.Layout; layout != nil {
+		// handle fill
+		if strings.HasPrefix(layout.Fill, `@`) {
+			self.Set(`anchors.fill`, layout.Fill)
+		} else if typeutil.Bool(layout.Fill) {
+			self.Set(`anchors.fill`, `@parent`)
+		}
+
+		hc := layout.HorizontalCenter
+		vc := layout.VerticalCenter
+
+		if typeutil.Bool(hc) && typeutil.Bool(vc) {
+			self.Set(`anchors.centerIn`, `@parent`)
+		} else if strings.HasPrefix(hc, `@`) && hc == vc {
+			self.Set(`anchors.centerIn`, `@`+hc)
+		} else {
+			if strings.HasPrefix(hc, `@`) {
+				self.Set(`anchors.horizontalCenter`, hc+`.horizontalCenter`)
+			} else if typeutil.Bool(hc) {
+				self.Set(`anchors.horizontalCenter`, `@parent.horizontalCenter`)
+			}
+
+			if strings.HasPrefix(vc, `@`) {
+				self.Set(`anchors.verticalCenter`, vc+`.verticalCenter`)
+			} else if typeutil.Bool(vc) {
+				self.Set(`anchors.verticalCenter`, `@parent.verticalCenter`)
+			}
+		}
 	}
 }
 

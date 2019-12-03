@@ -22,37 +22,11 @@ root:
       type: string
       value: ""
 
-  properties:
-    color: "#66222222"
-    flags: "@Qt.TranslucentBackground"
-    onPathChanged: |
-      if (root.path.length) {
-        jlm.source = root.server + '/api/folders/browse?path=' + root.path;
-      } else {
-        jlm.source = root.server + '/api/folders';
-      }
-
   components:
-    # setup an audio player
-    - type: Audio
-      id: audio
+    - type: JSONListView
+      id: folders
       properties:
-        onSourceChanged: |
-          console.debug('Play ' + audio.source);
-          audio.play();
-
-    # pull config from dingus
-    - type: JSONListModel
-      id: jlm
-      properties:
-        source: "{root.server + '/api/folders'}"
-
-    # build UI from config
-    - type: ListView
-      fill: true
-      properties:
-        model: "@jlm.model"
-        delegate: "@Folder{}"
+        source: "{ root.server + '/api/folders' }"
 
 modules:
   - name: Ticker
@@ -63,6 +37,7 @@ modules:
       properties:
         repeat: true
         running: true
+
   - name: FitText
     imports:
       - QtQuick 2.11
@@ -78,24 +53,39 @@ modules:
         horizontalAlignment: "@Text.AlignHCenter"
         verticalAlignment: "@Text.AlignVCenter"
 
-  - name: Folder
+  - name: FolderItem
     imports:
       - QtQuick 2.11
     definition:
       type: Rectangle
       properties:
-        color: transparent
+        color: red
         width: 100vw
         height: 10vh
       components:
         - type: FitText
-          properties:
-            text: "{model.id}"
-
-        - type: MouseArea
           fill: true
           properties:
-            onClicked: |
-              console.debug(model.id)
-              audio.source = root.server + '/api/entry/download?path=' + model.id;
-              root.path = model.id;
+            text: "{ model.properties.title || model.path || '(empty)' }"
+
+  - name: JSONListView
+    imports:
+      - QtQuick 2.11
+    definition:
+      type: Item
+      id: view
+      fill: true
+      public:
+        - name: source
+
+      components:
+        - type: JSONListModel
+          id: data
+          properties:
+            source: "@view.source"
+
+        - type: ListView
+          fill: true
+          properties:
+            model: "@data.model"
+            delegate: "@FolderItem{}"

@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/ghetzel/cli"
+	"github.com/ghetzel/go-stockutil/executil"
 	"github.com/ghetzel/go-stockutil/fileutil"
 	"github.com/ghetzel/go-stockutil/log"
 	"github.com/ghetzel/qmlgen"
@@ -39,8 +41,18 @@ func main() {
 		cli.StringFlag{
 			Name:   `app-qml`,
 			Usage:  `The name of the application QML in the output directory`,
-			Value:  `root.qml`,
+			Value:  `app.qml`,
 			EnvVar: `QMLGEN_OUTPUT_APPQML`,
+		},
+		cli.BoolFlag{
+			Name:  `run, r`,
+			Usage: `Run the generated project.`,
+		},
+		cli.StringFlag{
+			Name:   `qml-runner, Q`,
+			Usage:  `Run the generated project.`,
+			EnvVar: `QMLGEN_QML_RUNNER`,
+			Value:  `qmlscene`,
 		},
 	}
 
@@ -52,6 +64,9 @@ func main() {
 	app.Action = func(c *cli.Context) {
 		if app, err := qmlgen.LoadFile(c.String(`config`)); err == nil {
 			app.ModuleRoot = c.String(`output-dir`)
+
+			os.Remove(app.ModuleRoot)
+			log.FatalIf(os.MkdirAll(app.ModuleRoot, 0755))
 
 			if qml, err := app.QML(); err == nil {
 				switch out := c.String(`output-dir`); out {
@@ -69,6 +84,25 @@ func main() {
 
 						if _, err := file.Write(qml); err != nil {
 							log.Fatalf("write output: %v", err)
+						}
+
+						if c.Bool(`run`) {
+							runner := executil.Command(c.String(`qml-runner`), c.String(`app-qml`))
+							runner.Dir = app.ModuleRoot
+							runner.OnStdout = func(line string, _ bool) {
+								if line != `` {
+									log.Infof("[cmd] %s", line)
+								}
+							}
+
+							runner.OnStderr = func(line string, _ bool) {
+								if line != `` {
+									log.Errorf("[cmd] %s", line)
+								}
+							}
+
+							log.Debugf("run: %s", strings.Join(runner.Args, ` `))
+							log.FatalIf(runner.Run())
 						}
 					} else {
 						log.Fatalf("write output: %v", err)

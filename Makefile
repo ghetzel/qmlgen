@@ -1,9 +1,11 @@
-.PHONY: fmt deps test bin/qmlgen app.qml
 .EXPORT_ALL_VARIABLES:
 
 GO111MODULE ?= on
+BIN         ?= bin/qmlgen-$(shell go env GOOS)-$(shell go env GOARCH)
 
-all: deps fmt bin/qmlgen
+.PHONY: fmt deps test $(BIN)
+
+all: deps fmt $(BIN)
 
 fmt:
 	go fmt ./...
@@ -15,9 +17,16 @@ deps:
 test:
 	go test ./...
 
-bin/qmlgen:
+$(BIN):
 	go build -o $(@) cmd/*.go
 
+pan:
+	scp clock.yaml pan:app.yaml
+	scp bin/qmlgen-linux-arm pan:bin/qmlgen
+	ssh pan "rm -rf build; systemctl --user restart ui"
+
 run:
-	./bin/qmlgen
-	cd build && qmlscene root.qml
+	# -rm -rf build
+	# mkdir build
+	$(BIN)
+	cd build && qmlscene app.qml
