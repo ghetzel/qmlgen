@@ -27,4 +27,4 @@ definition:
           time.text = Qt.formatTime(
             new Date(),
             time.format
-          ).replace(/[ap]m$/, '').replace(/^0/, '');
+          );
