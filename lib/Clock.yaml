@@ -3,6 +3,10 @@ imports:
 definition:
   type: FitText
   id: time
+  public:
+    - name: format
+      value: "hh:mm:ssap"
+
   properties:
     text: "-"
     color: white
@@ -22,5 +26,5 @@ definition:
         onTriggered: |
           time.text = Qt.formatTime(
             new Date(),
-            "hh:mm:ssap"
+            time.format
           ).replace(/[ap]m$/, '').replace(/^0/, '');
