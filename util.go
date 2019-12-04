@@ -67,10 +67,10 @@ func fetch(uri string) (io.ReadCloser, error) {
 				if res.StatusCode < 400 {
 					rc = res.Body
 				} else {
-					return fmt.Errorf("http: HTTP %v", res.Status)
+					return nil, fmt.Errorf("http: HTTP %v", res.Status)
 				}
 			} else {
-				return fmt.Errorf("http: %v", err)
+				return nil, fmt.Errorf("http: %v", err)
 			}
 		case `file`:
 			if f, err := os.Open(fileutil.MustExpandUser(
@@ -78,10 +78,10 @@ func fetch(uri string) (io.ReadCloser, error) {
 			)); err == nil {
 				rc = f
 			} else {
-				return fmt.Errorf("file: %v", err)
+				return nil, fmt.Errorf("file: %v", err)
 			}
 		default:
-			return fmt.Errorf("unsupported scheme %q", u.Scheme)
+			return nil, fmt.Errorf("unsupported scheme %q", u.Scheme)
 		}
 	} else {
 		return nil, fmt.Errorf("uri: %v", err)
@@ -90,6 +90,6 @@ func fetch(uri string) (io.ReadCloser, error) {
 	if rc != nil {
 		return rc, nil
 	} else {
-		return fmt.Errorf("no data")
+		return nil, fmt.Errorf("no data")
 	}
 }
