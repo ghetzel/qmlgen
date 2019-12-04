@@ -19,6 +19,7 @@ test:
 
 $(BIN):
 	go build -o $(@) cmd/qmlgen/*.go
+	-which qmlgen && $(@) -v && cp $(@) $(shell which qmlgen)
 
 run:
 	# -rm -rf build

@@ -5,15 +5,15 @@ import (
 	"io"
 )
 
-type Dependency struct {
+type Asset struct {
 	Name     string `json:"name"`
 	Source   string `json:"source"`
 	Checksum string `json:"checksum,omitempty"`
 }
 
-func (self *Dependency) Retrieve() (io.ReadCloser, error) {
+func (self *Asset) Retrieve() (io.ReadCloser, error) {
 	if self.Source == `` {
-		return nil, fmt.Errorf("Must provide a dependency source URI")
+		return nil, fmt.Errorf("Must provide a asset source URI")
 	}
 
 	return fetch(self.Source)

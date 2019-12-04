@@ -17,7 +17,7 @@ func main() {
 	app := cli.NewApp()
 	app.Name = `qmlgen`
 	app.Usage = `Generate functional GUI applications from data structures`
-	app.Version = `0.0.1`
+	app.Version = qmlgen.Version
 
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
@@ -104,13 +104,13 @@ func main() {
 							runner.Dir = app.ModuleRoot
 							runner.OnStdout = func(line string, _ bool) {
 								if line != `` {
-									log.Infof("[cmd] %s", line)
+									log.Debugf("[cmd] %s", line)
 								}
 							}
 
 							runner.OnStderr = func(line string, _ bool) {
 								if line != `` {
-									log.Errorf("[cmd] %s", line)
+									log.Infof("[cmd] %s", line)
 								}
 							}
 

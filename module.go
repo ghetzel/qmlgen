@@ -3,6 +3,7 @@ package qmlgen
 import (
 	"fmt"
 	"io/ioutil"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -13,6 +14,8 @@ type Module struct {
 	Name       string     `json:"name,omitempty"`
 	Source     string     `json:"source,omitempty"`
 	Imports    []string   `json:"imports,omitempty"`
+	Assets     []Asset    `json:"assets,omitempty"`
+	Modules    []*Module  `json:"modules,omitempty"`
 	Definition *Component `json:"definition,omitempty"`
 }
 
@@ -51,4 +54,56 @@ func (self *Module) Fetch() error {
 	} else {
 		return nil
 	}
+}
+
+func (self *Module) writeQmlFile(root string) error {
+	if err := self.Fetch(); err == nil {
+		tgt := filepath.Join(root, self.Name+`.qml`)
+
+		if err := os.MkdirAll(filepath.Dir(tgt), 0755); err == nil {
+			if out, err := os.Create(tgt); err == nil {
+				defer out.Close()
+
+				for _, imp := range self.Imports {
+					if stmt, err := toImportStatement(imp); err == nil {
+						out.WriteString(stmt + "\n")
+					} else {
+						return fmt.Errorf("module %q: import %s: %s", self.Name, imp, err)
+					}
+				}
+
+				out.WriteString(fmt.Sprintf("import %q\n", `.`))
+
+				if defn := self.Definition; defn != nil {
+					if data, err := defn.QML(0); err == nil {
+						if _, err := out.Write(data); err != nil {
+							return fmt.Errorf("module %q: write error %v", self.Name, err)
+						}
+
+						out.Close()
+					} else {
+						return err
+					}
+				} else {
+					return fmt.Errorf("module %q: must provide a definition", self.Name)
+				}
+			} else {
+				return fmt.Errorf("write module %v: %s", self.Name, err)
+			}
+		} else {
+			return fmt.Errorf("write module %v: %s", self.Name, err)
+		}
+	} else {
+		return fmt.Errorf("fetch module %v: %s", self.Name, err)
+	}
+
+	// write out submodules
+	for _, mod := range self.Modules {
+		if err := mod.writeQmlFile(root); err != nil {
+			return err
+		}
+	}
+
+	// all is well.
+	return nil
 }

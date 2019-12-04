@@ -21,6 +21,7 @@ type Component struct {
 	ID         string                 `json:"id,omitempty"`
 	Public     Properties             `json:"public,omitempty"`
 	Properties map[string]interface{} `json:"properties,omitempty"`
+	Functions  []Function             `json:"functions,omitempty"`
 	Components []*Component           `json:"components,omitempty"`
 	Layout     *Layout                `json:"layout,omitempty"`
 	private    Properties
@@ -84,15 +85,22 @@ func (self *Component) QML(depth int) ([]byte, error) {
 			out.WriteString(self.Type + `{`)
 		}
 
+		// write properties that are exposed to callers
 		if err := self.writePublicProperties(&out); err != nil {
 			return nil, err
 		}
 
+		// write properties that represent internal state
 		if err := self.writePrivateProperties(&out); err != nil {
 			return nil, err
 		}
 
-		// write out children (recursive)
+		// write out local function definitions
+		if err := self.writeFunctions(&out); err != nil {
+			return nil, err
+		}
+
+		// write out child components (recursive)
 		for _, child := range self.Components {
 			if data, err := child.QML(depth + 1); err == nil {
 				for _, line := range lines(data) {
@@ -150,11 +158,8 @@ func (self *Component) writePublicProperties(buf *bytes.Buffer) error {
 	}
 
 	// write out public properties
-	if properties, err := self.Public.QML(); err == nil {
-		for _, line := range lines(properties) {
-			buf.WriteString(Indent + line + "\n")
-		}
-
+	if data, err := self.Public.QML(); err == nil {
+		self.writeIndented(buf, data)
 		return nil
 	} else {
 		return err
@@ -170,14 +175,29 @@ func (self *Component) writePrivateProperties(buf *bytes.Buffer) error {
 	}
 
 	// write out private properties
-	if properties, err := self.private.QML(); err == nil {
-		for _, line := range lines(properties) {
-			buf.WriteString(Indent + line + "\n")
-		}
-
+	if data, err := self.private.QML(); err == nil {
+		self.writeIndented(buf, data)
 		return nil
 	} else {
 		return err
 	}
 
+}
+
+func (self *Component) writeFunctions(buf *bytes.Buffer) error {
+	for _, fn := range self.Functions {
+		if data, err := fn.QML(); err == nil {
+			self.writeIndented(buf, data)
+		} else {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (self *Component) writeIndented(buf *bytes.Buffer, data []byte) {
+	for _, line := range lines(data) {
+		buf.WriteString(Indent + line + "\n")
+	}
 }

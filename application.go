@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/ghetzel/go-stockutil/fileutil"
 	"github.com/ghetzel/go-stockutil/log"
@@ -16,12 +17,12 @@ import (
 )
 
 type Application struct {
-	Imports      []string     `json:"imports,omitempty"`
-	Dependencies []Dependency `json:"dependencies,omitempty"`
-	Modules      []*Module    `json:"modules,omitempty"`
-	Root         *Component   `json:"root,omitempty"`
-	ModuleRoot   string       `json:"module_root"`
-	filename     string
+	Imports    []string   `json:"imports,omitempty"`
+	Assets     []Asset    `json:"assets,omitempty"`
+	Modules    []*Module  `json:"modules,omitempty"`
+	Root       *Component `json:"root,omitempty"`
+	ModuleRoot string     `json:"module_root"`
+	filename   string
 }
 
 func LoadFile(yamlFilename string) (*Application, error) {
@@ -50,73 +51,60 @@ func LoadFile(yamlFilename string) (*Application, error) {
 	}
 }
 
-func (self *Application) WriteDependencies() error {
-	for i, dep := range self.Dependencies {
-		if dep.Name == `` {
-			return fmt.Errorf("dependency %d: must provide a name", i)
+// This function retrieves external assets from various data sources and
+// writes them out to files.  These assets may be any type of file.
+func (self *Application) WriteAssets() error {
+	for _, mod := range self.Modules {
+		self.Assets = append(self.Assets, mod.Assets...)
+	}
+
+	for _, asset := range self.Assets {
+		if asset.Name == `` {
+			asset.Name = filepath.Base(asset.Source)
 		}
 
-		if tgt := filepath.Join(self.ModuleRoot, dep.Name); fileutil.IsNonemptyFile(tgt) {
-			log.Debugf("dependency %q: %s", dep.Name, tgt)
+		if tgt := filepath.Join(self.ModuleRoot, asset.Name); fileutil.IsNonemptyFile(tgt) {
+			log.Debugf("asset %q: %s", asset.Name, tgt)
 			continue
-		} else if rc, err := dep.Retrieve(); err == nil {
+		} else if rc, err := asset.Retrieve(); err == nil {
 			defer rc.Close()
 
-			if out, err := os.Create(tgt); err == nil {
-				defer out.Close()
+			// ensure parent directory exists
+			if err := os.MkdirAll(filepath.Dir(tgt), 0755); err == nil {
+				// open the destination file for writing
+				if out, err := os.Create(tgt); err == nil {
+					defer out.Close()
 
-				if n, err := io.Copy(out, rc); err == nil {
-					log.Debugf("wrote dependency %q (%d bytes)", dep.Name, n)
-					out.Close()
+					// copy data from source to output file
+					if n, err := io.Copy(out, rc); err == nil {
+						log.Debugf("wrote asset %q (%d bytes)", asset.Name, n)
+						out.Close()
+					} else {
+						return fmt.Errorf("write asset %q: %v", asset.Name, err)
+					}
 				} else {
-					return fmt.Errorf("write dependency %q: %v", dep.Name, err)
+					return fmt.Errorf("asset %q: %v", asset.Name, err)
 				}
-			} else {
-				return fmt.Errorf("dependency %q: %v", dep.Name, err)
-			}
 
-			rc.Close()
+				rc.Close()
+			} else {
+				return fmt.Errorf("asset %q: %v", asset.Name, err)
+			}
 		} else {
-			return fmt.Errorf("dependency %q: %v", dep.Name, err)
+			return fmt.Errorf("asset %q: %v", asset.Name, err)
 		}
 	}
 
 	return nil
 }
 
+// This function writes inline modules out to files.  Modules can optionally be
+// sourced from a remote location, in which case this function will retrieve the
+// data from that location first.
 func (self *Application) WriteModules() error {
 	for _, mod := range self.Modules {
-		if err := mod.Fetch(); err == nil {
-			if out, err := os.Create(filepath.Join(self.ModuleRoot, mod.Name+`.qml`)); err == nil {
-				defer out.Close()
-
-				for i, imp := range mod.Imports {
-					if stmt, _, err := self.toImportStatement(i, imp); err == nil {
-						mod.Imports[i] = stmt
-						out.WriteString(stmt + "\n")
-					} else {
-						return fmt.Errorf("module %q: import %s: %s", mod.Name, imp, err)
-					}
-				}
-
-				if defn := mod.Definition; defn != nil {
-					if data, err := defn.QML(0); err == nil {
-						if _, err := out.Write(data); err != nil {
-							return fmt.Errorf("module %q: write error %v", mod.Name, err)
-						}
-
-						out.Close()
-					} else {
-						return err
-					}
-				} else {
-					return fmt.Errorf("module %q: must provide a definition", mod.Name)
-				}
-			} else {
-				return fmt.Errorf("write module %v: %s", mod.Name, err)
-			}
-		} else {
-			return fmt.Errorf("fetch module %v: %s", mod.Name, err)
+		if err := mod.writeQmlFile(self.ModuleRoot); err != nil {
+			return err
 		}
 	}
 
@@ -125,41 +113,29 @@ func (self *Application) WriteModules() error {
 
 func (self *Application) QML() ([]byte, error) {
 	var out bytes.Buffer
-	var writeback bool
 
-	for i, imp := range self.Imports {
-		if stmt, wb, err := self.toImportStatement(i, imp); err == nil {
+	// process all top-level import statements
+	for _, imp := range self.Imports {
+		if stmt, err := toImportStatement(imp); err == nil {
 			out.WriteString(stmt + "\n")
-
-			if wb {
-				writeback = true
-			}
 		} else {
 			return nil, err
 		}
 	}
 
-	if err := self.WriteDependencies(); err != nil {
-		return nil, err
-	}
-
+	// retrieve and write out all modules
 	if err := self.WriteModules(); err == nil {
 		out.WriteString(fmt.Sprintf("import %q\n", `.`))
 	} else {
 		return nil, err
 	}
 
-	out.WriteString("\n")
-
-	if writeback && self.filename != `` {
-		if data, err := yaml.Marshal(self); err == nil {
-			if _, err := fileutil.WriteFile(data, self.filename); err != nil {
-				return nil, fmt.Errorf("failed to update YAML: %v", err)
-			}
-		} else {
-			return nil, fmt.Errorf("failed to update YAML: %v", err)
-		}
+	// retrieve and write out all assets
+	if err := self.WriteAssets(); err != nil {
+		return nil, err
 	}
+
+	out.WriteString("\n")
 
 	if root := self.Root; root != nil {
 		root.ID = `root`
@@ -184,31 +160,36 @@ func (self *Application) String() string {
 	}
 }
 
-func (self *Application) toImportStatement(i int, imp string) (string, bool, error) {
-	parts := rxutil.Whitespace.Split(imp, -1)
+// generates a syntactically-correct QML import statement from a string.
+// 	format: [ALIAS:]MODULE[ MAJOR.MINOR]
+//
+//  Examples:
+//
+//		QtQuick 2.0        -> import QtQuick 2.0
+//		Q:QtQuick 2.0      -> import QtQuick 2.0 as Q
+//		Something.js       -> import "Something.js" as Something
+//		Other:Something.js -> import "Something.js" as Other
+//
+func toImportStatement(imp string) (string, error) {
+	imp = strings.TrimSpace(imp)
+	parts := rxutil.Whitespace.Split(imp, 2)
+	alias, lib := stringutil.SplitPairTrailing(parts[0], `:`)
 
 	switch len(parts) {
-	case 1:
-		return `import ` + parts[0], false, nil
-	default:
-		lib := parts[0]
-		ver := parts[1]
-
-		if major, directive := stringutil.SplitPair(ver, `@`); directive != `` {
-			log.Debugf("qmllib: detect %q %q", lib, major+`.x`)
-
-			// identify the latest minor version of a library installed
-			if ver, err := resolveVersion(lib, major); err == nil {
-				self.Imports[i] = lib + ` ` + ver
-
-				log.Debugf("qmllib: use %q %q", lib, ver)
-				return `import ` + self.Imports[i], true, nil
-			} else {
-				return ``, false, fmt.Errorf("import %v: %v", lib, err)
-			}
+	case 1: // no version specified, assume to be a local import
+		if alias != `` {
+			return fmt.Sprintf("import %q as %s", lib, alias), nil
 		} else {
-			log.Debugf("qmllib: use %q %q", lib, ver)
-			return `import ` + lib + ` ` + ver, false, nil
+			alias = strings.TrimSuffix(filepath.Base(lib), filepath.Ext(lib))
+			return fmt.Sprintf("import %q as %s", lib, alias), nil
+		}
+	default: // version specified, import from QML_IMPORT_PATH
+		version := parts[1]
+
+		if alias != `` {
+			return fmt.Sprintf("import %s %s as %s", lib, version, alias), nil
+		} else {
+			return fmt.Sprintf("import %s %s", lib, version), nil
 		}
 	}
 }

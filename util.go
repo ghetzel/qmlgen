@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -28,35 +27,6 @@ func lines(data []byte) (out []string) {
 	return
 }
 
-func resolveVersion(lib string, major string) (string, error) {
-	for minor := 0; minor < QmlMaxMinorVersion; minor++ {
-		if tmpfile, err := fileutil.WriteTempFile(
-			fmt.Sprintf("import QtQuick 2.0\nimport %s %s.%d\nItem{}\n", lib, major, minor),
-			``,
-		); err == nil {
-			// log.Debugf("qmllib: try %s %s.%d", lib, major, minor)
-			out, err := exec.Command(QmlScene, `--quit`, tmpfile).CombinedOutput()
-			os.Remove(tmpfile)
-
-			if err == nil {
-				continue
-			} else if strings.Contains(string(out), `is not installed`) {
-				if minor == 0 {
-					break
-				} else {
-					return fmt.Sprintf("%s.%d", major, minor-1), nil
-				}
-			} else {
-				return ``, fmt.Errorf("qmllib: %v", err)
-			}
-		} else {
-			return ``, fmt.Errorf("tmpfile: %v", err)
-		}
-	}
-
-	return ``, fmt.Errorf("%s %s.x not found", lib, major)
-}
-
 func fetch(uri string) (io.ReadCloser, error) {
 	var rc io.ReadCloser
 
@@ -72,7 +42,7 @@ func fetch(uri string) (io.ReadCloser, error) {
 			} else {
 				return nil, fmt.Errorf("http: %v", err)
 			}
-		case `file`:
+		case `file`, ``:
 			if f, err := os.Open(fileutil.MustExpandUser(
 				filepath.Join(u.Host, u.Path),
 			)); err == nil {
