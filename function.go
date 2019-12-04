@@ -28,9 +28,16 @@ func (self *Function) QML() ([]byte, error) {
 	var out bytes.Buffer
 
 	if err := self.Validate(); err == nil {
-		out.WriteString("function " + self.Name + "(" + strings.Join(self.Arguments, `, `) + ") {\n")
+		var args []string
+
+		for _, arg := range self.Arguments {
+			args = append(args, env(arg))
+		}
+
+		out.WriteString("function " + env(self.Name) + "(" + strings.Join(args, `, `) + ") {\n")
+
 		for _, line := range lines([]byte(self.Definition)) {
-			out.WriteString(Indent + line + "\n")
+			out.WriteString(Indent + env(line) + "\n")
 		}
 
 		out.WriteString("}\n")

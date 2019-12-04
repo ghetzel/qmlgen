@@ -167,6 +167,8 @@ func (self *Component) writePublicProperties(buf *bytes.Buffer) error {
 }
 
 func (self *Component) writePrivateProperties(buf *bytes.Buffer) error {
+	self.private = nil
+
 	for k, v := range self.Properties {
 		self.private = append(self.private, &Property{
 			Name:  k,

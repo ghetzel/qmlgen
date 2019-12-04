@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/ghetzel/go-stockutil/fileutil"
+	"github.com/ghetzel/go-stockutil/stringutil"
+	"github.com/ghetzel/go-stockutil/typeutil"
 )
 
 var QmlScene = `qmlscene`
@@ -62,4 +64,8 @@ func fetch(uri string) (io.ReadCloser, error) {
 	} else {
 		return nil, fmt.Errorf("no data")
 	}
+}
+
+func env(in interface{}) string {
+	return stringutil.ExpandEnv(typeutil.String(in))
 }

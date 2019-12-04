@@ -53,7 +53,7 @@ func (self Property) qmlvalue() string {
 		if typeutil.IsMap(self.Value) {
 			self.Value = maputil.Apply(self.Value, func(key []string, value interface{}) (interface{}, bool) {
 				if vS, ok := value.(string); ok {
-					return stringutil.ExpandEnv(vS), true
+					return env(vS), true
 				} else {
 					return nil, false
 				}
@@ -61,13 +61,13 @@ func (self Property) qmlvalue() string {
 		} else if typeutil.IsArray(self.Value) {
 			self.Value = sliceutil.Map(self.Value, func(i int, value interface{}) interface{} {
 				if vS, ok := value.(string); ok {
-					return stringutil.ExpandEnv(vS)
+					return env(vS)
 				} else {
 					return value
 				}
 			})
 		} else if vS, ok := self.Value.(string); ok {
-			self.Value = stringutil.ExpandEnv(vS)
+			self.Value = env(vS)
 		}
 
 		// JSONify and return
