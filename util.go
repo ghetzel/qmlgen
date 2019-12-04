@@ -2,8 +2,12 @@ package qmlgen
 
 import (
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/ghetzel/go-stockutil/fileutil"
@@ -51,4 +55,41 @@ func resolveVersion(lib string, major string) (string, error) {
 	}
 
 	return ``, fmt.Errorf("%s %s.x not found", lib, major)
+}
+
+func fetch(uri string) (io.ReadCloser, error) {
+	var rc io.ReadCloser
+
+	if u, err := url.Parse(uri); err == nil {
+		switch u.Scheme {
+		case `http`, `https`:
+			if res, err := http.Get(u.String()); err == nil {
+				if res.StatusCode < 400 {
+					rc = res.Body
+				} else {
+					return fmt.Errorf("http: HTTP %v", res.Status)
+				}
+			} else {
+				return fmt.Errorf("http: %v", err)
+			}
+		case `file`:
+			if f, err := os.Open(fileutil.MustExpandUser(
+				filepath.Join(u.Host, u.Path),
+			)); err == nil {
+				rc = f
+			} else {
+				return fmt.Errorf("file: %v", err)
+			}
+		default:
+			return fmt.Errorf("unsupported scheme %q", u.Scheme)
+		}
+	} else {
+		return nil, fmt.Errorf("uri: %v", err)
+	}
+
+	if rc != nil {
+		return rc, nil
+	} else {
+		return fmt.Errorf("no data")
+	}
 }

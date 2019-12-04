@@ -27,7 +27,7 @@ func (self Property) qmlvalue() string {
 		if strings.Contains(s, "\n") {
 			return "function(){\n" + stringutil.PrefixLines(s, Indent) + "\n}"
 		} else if stringutil.IsSurroundedBy(s, `{`, `}`) {
-			return stringutil.Unwrap(s, `{`, `}`)
+			return strings.TrimSpace(stringutil.Unwrap(s, `{`, `}`))
 		} else if strings.HasSuffix(s, `vmin`) {
 			f := typeutil.Float(strings.TrimSuffix(s, `vmin`)) / 100.0
 			return fmt.Sprintf("((root.height < root.width) ? (root.height * %f) : (root.width * %f))", f, f)
@@ -46,9 +46,7 @@ func (self Property) qmlvalue() string {
 
 		}
 
-		if strings.HasPrefix(s, `@`) {
-			return s[1:]
-		} else if data, err := json.Marshal(self.Value); err == nil {
+		if data, err := json.Marshal(self.Value); err == nil {
 			return string(data)
 		} else {
 			panic("invalid json: " + err.Error())

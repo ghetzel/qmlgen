@@ -87,7 +87,20 @@ func main() {
 						}
 
 						if c.Bool(`run`) {
-							runner := executil.Command(c.String(`qml-runner`), c.String(`app-qml`))
+							var qmlargs []string
+							var argproc bool
+
+							for _, arg := range c.Args() {
+								if arg == `--` {
+									argproc = true
+								} else if argproc {
+									qmlargs = append(qmlargs, arg)
+								}
+							}
+
+							qmlargs = append(qmlargs, c.String(`app-qml`))
+
+							runner := executil.Command(c.String(`qml-runner`), qmlargs...)
 							runner.Dir = app.ModuleRoot
 							runner.OnStdout = func(line string, _ bool) {
 								if line != `` {

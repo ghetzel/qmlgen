@@ -115,29 +115,29 @@ func (self *Component) applyLayoutProperties() {
 	if layout := self.Layout; layout != nil {
 		// handle fill
 		if strings.HasPrefix(layout.Fill, `@`) {
-			self.Set(`anchors.fill`, layout.Fill)
+			self.Set(`anchors.fill`, `{`+strings.TrimPrefix(layout.Fill, `@`)+`}`)
 		} else if typeutil.Bool(layout.Fill) {
-			self.Set(`anchors.fill`, `@parent`)
+			self.Set(`anchors.fill`, `{parent}`)
 		}
 
 		hc := layout.HorizontalCenter
 		vc := layout.VerticalCenter
 
 		if typeutil.Bool(hc) && typeutil.Bool(vc) {
-			self.Set(`anchors.centerIn`, `@parent`)
+			self.Set(`anchors.centerIn`, `{parent}`)
 		} else if strings.HasPrefix(hc, `@`) && hc == vc {
-			self.Set(`anchors.centerIn`, `@`+hc)
+			self.Set(`anchors.centerIn`, `{`+strings.TrimPrefix(hc, `@`)+`}`)
 		} else {
 			if strings.HasPrefix(hc, `@`) {
-				self.Set(`anchors.horizontalCenter`, hc+`.horizontalCenter`)
+				self.Set(`anchors.horizontalCenter`, `{`+strings.TrimPrefix(hc, `@`)+`.horizontalCenter}`)
 			} else if typeutil.Bool(hc) {
-				self.Set(`anchors.horizontalCenter`, `@parent.horizontalCenter`)
+				self.Set(`anchors.horizontalCenter`, `{parent.horizontalCenter}`)
 			}
 
 			if strings.HasPrefix(vc, `@`) {
-				self.Set(`anchors.verticalCenter`, vc+`.verticalCenter`)
+				self.Set(`anchors.verticalCenter`, `{`+strings.TrimPrefix(vc, `@`)+`.verticalCenter}`)
 			} else if typeutil.Bool(vc) {
-				self.Set(`anchors.verticalCenter`, `@parent.verticalCenter`)
+				self.Set(`anchors.verticalCenter`, `{parent.verticalCenter}`)
 			}
 		}
 	}

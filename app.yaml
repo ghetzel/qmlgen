@@ -1,9 +1,9 @@
 dependencies:
   - name: jsonpath.js
-    source: https://raw.githubusercontent.com/kromain/qml-utils/e4cf5e0a0603d5861451929cb4cb005f117aefa4/JSONListModel/jsonpath.js
+    source: https://raw.githubusercontent.com/ghetzel/qmlgen/master/lib/jsonpath.js
 
   - name: JSONListModel.qml
-    source: https://raw.githubusercontent.com/kromain/qml-utils/e4cf5e0a0603d5861451929cb4cb005f117aefa4/JSONListModel/JSONListModel.qml
+    source: https://raw.githubusercontent.com/ghetzel/qmlgen/master/lib/JSONListModel.qml
 
 imports:
   - QtQuick 2.11
@@ -29,29 +29,19 @@ root:
         source: "{ root.server + '/api/folders' }"
 
 modules:
-  - name: Ticker
-    imports:
-      - QtQuick 2.11
-    definition:
-      type: Timer
-      properties:
-        repeat: true
-        running: true
-
   - name: FitText
     imports:
       - QtQuick 2.11
     definition:
       type: Text
       properties:
-        width: "@parent.width"
-        height: "@parent.height"
-        fontSizeMode: "@Text.Fit"
-        font.pixelSize: "100vmax"
-        minimumPixelSize: "1vmin"
-        color: "black"
-        horizontalAlignment: "@Text.AlignHCenter"
-        verticalAlignment: "@Text.AlignVCenter"
+        width: "{ parent.width }"
+        height: "{ parent.height }"
+        fontSizeMode: "{ Text.Fit }"
+        font.pixelSize: 100vmax
+        minimumPixelSize: 12
+        horizontalAlignment: "{ Text.AlignHCenter }"
+        verticalAlignment: "{ Text.AlignVCenter }"
 
   - name: FolderItem
     imports:
@@ -82,10 +72,10 @@ modules:
         - type: JSONListModel
           id: data
           properties:
-            source: "@view.source"
+            source: "{ view.source }"
 
         - type: ListView
           fill: true
           properties:
-            model: "@data.model"
-            delegate: "@FolderItem{}"
+            model: "{ data.model }"
+            delegate: "{ FolderItem{} }"

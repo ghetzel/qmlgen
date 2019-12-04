@@ -86,33 +86,37 @@ func (self *Application) WriteDependencies() error {
 
 func (self *Application) WriteModules() error {
 	for _, mod := range self.Modules {
-		if out, err := os.Create(filepath.Join(self.ModuleRoot, mod.Name+`.qml`)); err == nil {
-			defer out.Close()
+		if err := mod.Fetch(); err == nil {
+			if out, err := os.Create(filepath.Join(self.ModuleRoot, mod.Name+`.qml`)); err == nil {
+				defer out.Close()
 
-			for i, imp := range mod.Imports {
-				if stmt, _, err := self.toImportStatement(i, imp); err == nil {
-					mod.Imports[i] = stmt
-					out.WriteString(stmt + "\n")
-				} else {
-					return fmt.Errorf("module %q: import %s: %s", mod.Name, imp, err)
-				}
-			}
-
-			if defn := mod.Definition; defn != nil {
-				if data, err := defn.QML(0); err == nil {
-					if _, err := out.Write(data); err != nil {
-						return fmt.Errorf("module %q: write error %v", mod.Name, err)
+				for i, imp := range mod.Imports {
+					if stmt, _, err := self.toImportStatement(i, imp); err == nil {
+						mod.Imports[i] = stmt
+						out.WriteString(stmt + "\n")
+					} else {
+						return fmt.Errorf("module %q: import %s: %s", mod.Name, imp, err)
 					}
+				}
 
-					out.Close()
+				if defn := mod.Definition; defn != nil {
+					if data, err := defn.QML(0); err == nil {
+						if _, err := out.Write(data); err != nil {
+							return fmt.Errorf("module %q: write error %v", mod.Name, err)
+						}
+
+						out.Close()
+					} else {
+						return err
+					}
 				} else {
-					return err
+					return fmt.Errorf("module %q: must provide a definition", mod.Name)
 				}
 			} else {
-				return fmt.Errorf("module %q: must provide a definition", mod.Name)
+				return fmt.Errorf("write module %v: %s", mod.Name, err)
 			}
 		} else {
-			return fmt.Errorf("write module %v: %s", mod.Name, err)
+			return fmt.Errorf("fetch module %v: %s", mod.Name, err)
 		}
 	}
 
