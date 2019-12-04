@@ -63,7 +63,10 @@ func (self *Application) WriteAssets() error {
 			asset.Name = filepath.Base(asset.Source)
 		}
 
-		if tgt := filepath.Join(self.ModuleRoot, asset.Name); fileutil.IsNonemptyFile(tgt) {
+		tgt := filepath.Join(self.ModuleRoot, asset.Name)
+		tgt = env(tgt)
+
+		if fileutil.IsNonemptyFile(tgt) {
 			log.Debugf("asset %q: %s", asset.Name, tgt)
 			continue
 		} else if rc, err := asset.Retrieve(); err == nil {
@@ -172,6 +175,8 @@ func (self *Application) String() string {
 //
 func toImportStatement(imp string) (string, error) {
 	imp = strings.TrimSpace(imp)
+	imp = env(imp)
+
 	parts := rxutil.Whitespace.Split(imp, 2)
 	alias, lib := stringutil.SplitPairTrailing(parts[0], `:`)
 

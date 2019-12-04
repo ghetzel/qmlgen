@@ -16,5 +16,5 @@ func (self *Asset) Retrieve() (io.ReadCloser, error) {
 		return nil, fmt.Errorf("Must provide a asset source URI")
 	}
 
-	return fetch(self.Source)
+	return fetch(env(self.Source))
 }
