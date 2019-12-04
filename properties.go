@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ghetzel/go-stockutil/maputil"
+	"github.com/ghetzel/go-stockutil/sliceutil"
 	"github.com/ghetzel/go-stockutil/stringutil"
 	"github.com/ghetzel/go-stockutil/typeutil"
 )
@@ -23,8 +25,9 @@ func (self Property) qmlvalue() string {
 	} else {
 		s := typeutil.String(self.Value)
 
-		// treat multi-line strings as functions
+		// Detect the use of custom units and expand them into expressions
 		if strings.Contains(s, "\n") {
+			// treat multi-line strings as functions
 			return "function(){\n" + stringutil.PrefixLines(s, Indent) + "\n}"
 		} else if stringutil.IsSurroundedBy(s, `{`, `}`) {
 			return strings.TrimSpace(stringutil.Unwrap(s, `{`, `}`))
@@ -46,7 +49,29 @@ func (self Property) qmlvalue() string {
 
 		}
 
-		if data, err := json.Marshal(self.Value); err == nil {
+		// Environment variable expansion (works on strings, and recursively through objects and arrays)
+		if typeutil.IsMap(self.Value) {
+			self.Value = maputil.Apply(self.Value, func(key []string, value interface{}) (interface{}, bool) {
+				if vS, ok := value.(string); ok {
+					return stringutil.ExpandEnv(vS), true
+				} else {
+					return nil, false
+				}
+			})
+		} else if typeutil.IsArray(self.Value) {
+			self.Value = sliceutil.Map(self.Value, func(i int, value interface{}) interface{} {
+				if vS, ok := value.(string); ok {
+					return stringutil.ExpandEnv(vS)
+				} else {
+					return value
+				}
+			})
+		} else if vS, ok := self.Value.(string); ok {
+			self.Value = stringutil.ExpandEnv(vS)
+		}
+
+		// JSONify and return
+		if data, err := json.MarshalIndent(self.Value, ``, Indent); err == nil {
 			return string(data)
 		} else {
 			panic("invalid json: " + err.Error())
