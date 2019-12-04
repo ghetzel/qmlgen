@@ -3,6 +3,8 @@ package qmlgen
 import (
 	"fmt"
 	"io/ioutil"
+	"path/filepath"
+	"strings"
 
 	"github.com/ghodss/yaml"
 )
@@ -31,6 +33,11 @@ func (self *Module) Fetch() error {
 			if data, err := ioutil.ReadAll(rc); err == nil {
 				if err := yaml.Unmarshal(data, self); err == nil {
 					self.Name = name
+
+					if strings.TrimSpace(self.Name) == `` {
+						self.Name = strings.TrimSuffix(filepath.Base(self.Source), filepath.Ext(self.Source))
+					}
+
 					return nil
 				} else {
 					return fmt.Errorf("parse: %v", err)

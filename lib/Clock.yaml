@@ -1,0 +1,24 @@
+imports:
+  - QtQuick 2.11
+definition:
+  type: FitText
+  id: time
+  properties:
+    text: "-"
+    color: white
+    font.family: "Lets go Digital"
+    font.preferShaping: false
+
+  components:
+    - type: Timer
+      id: tick
+      properties:
+        interval: 1000
+        repeat: true
+        running: true
+        triggeredOnStart: true
+        onTriggered: |
+          time.text = Qt.formatTime(
+            new Date(),
+            "hh:mm:ssap"
+          ).replace(/[ap]m$/, '').replace(/^0/, '');
