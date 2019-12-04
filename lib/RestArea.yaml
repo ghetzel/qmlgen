@@ -1,0 +1,66 @@
+imports:
+  - QtQuick 2.11
+definition:
+  type: MouseArea
+  id: rest
+  public:
+    - name: url
+      value: ""
+
+    - name: method
+      value: get
+
+    - name: response
+    - name: errorResponse
+
+    - name: statusCode
+      type: int
+      value: 0
+
+    - name: statusText
+      type: string
+      value: ""
+
+  properties:
+    width: "{ parent.width }"
+    height: "{ parent.height }"
+    onClicked: |
+      var xhr = new XMLHttpRequest;
+      var method = rest.method;
+
+      if (method) {
+        method = method.toUpperCase();
+      }
+
+      if (rest.url) {
+        xhr.open(method, rest.url);
+        console.debug('RestArea: ' + method + ' ' + rest.url);
+
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState == XMLHttpRequest.DONE) {
+              rest.statusCode = xhr.status;
+              rest.statusText = xhr.statusText;
+
+              console.debug(
+                'RestArea: HTTP ' +
+                rest.statusCode.toString() + ' ' + xhr.statusText
+              );
+
+              if (xhr.status < 400) {
+                try {
+                  rest.response = JSON.parse(xhr.responseText);
+                } catch (e) {
+                  rest.response = null;
+                }
+              } else {
+                try {
+                  rest.errorResponse = JSON.parse(xhr.responseText);
+                } catch (e) {
+                  rest.errorResponse = null;
+                }
+              }
+            }
+        }
+
+        xhr.send();
+      }
