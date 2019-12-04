@@ -58,7 +58,7 @@ func (self *Module) Fetch() error {
 
 func (self *Module) writeQmlFile(root string) error {
 	if err := self.Fetch(); err == nil {
-		tgt := filepath.Join(root, self.Name+`.qml`)
+		tgt := env(filepath.Join(root, self.Name+`.qml`))
 
 		if err := os.MkdirAll(filepath.Dir(tgt), 0755); err == nil {
 			if out, err := os.Create(tgt); err == nil {
