@@ -8,6 +8,8 @@ definition:
     color: white
     font.family: "Lets go Digital"
     font.preferShaping: false
+    height: "{ parent.height }"
+    width: "{ parent.width }"
 
   components:
     - type: Timer
