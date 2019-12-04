@@ -67,7 +67,12 @@ func (self Property) String() (out string) {
 		out += self.Type + ` `
 	}
 
-	out += self.Name + `: ` + self.qmlvalue()
+	out += self.Name
+
+	if self.Value != nil {
+		out += `: ` + self.qmlvalue()
+	}
+
 	return
 }
 
