@@ -54,6 +54,20 @@ func main() {
 			EnvVar: `QMLGEN_QML_RUNNER`,
 			Value:  `qmlscene`,
 		},
+		cli.BoolFlag{
+			Name:  `server, s`,
+			Usage: `Run a built-in Diecast web server.`,
+		},
+		cli.StringFlag{
+			Name:  `address, a`,
+			Usage: `The address the built-in server should listen on (if enabled).`,
+			Value: `127.0.0.1:11647`,
+		},
+		cli.StringFlag{
+			Name:  `server-root, R`,
+			Usage: `The root directory containing files the server should serve.`,
+			Value: qmlgen.ServeRoot,
+		},
 	}
 
 	app.Before = func(c *cli.Context) error {
@@ -112,6 +126,15 @@ func main() {
 								if line != `` {
 									log.Infof("[cmd] %s", line)
 								}
+							}
+
+							if c.Bool(`server`) {
+								log.Infof("[server] starting HTTP server at %s", c.String(`address`))
+
+								go func() {
+									qmlgen.ServeRoot = c.String(`server-root`)
+									log.FatalIf(qmlgen.Serve(c.String(`address`)))
+								}()
 							}
 
 							log.Debugf("run: %s", strings.Join(runner.Args, ` `))
