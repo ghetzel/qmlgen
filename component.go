@@ -24,6 +24,7 @@ type Component struct {
 	Functions  []Function             `json:"functions,omitempty"`
 	Components []*Component           `json:"components,omitempty"`
 	Layout     *Layout                `json:"layout,omitempty"`
+	Signals    []*Signal              `json:"signals,omitempty"`
 	private    Properties
 }
 
@@ -83,6 +84,11 @@ func (self *Component) QML(depth int) ([]byte, error) {
 			out.WriteString(self.Type + " {\n")
 		} else {
 			out.WriteString(self.Type + `{`)
+		}
+
+		// write signal declarations
+		if err := self.writeSignals(&out); err != nil {
+			return nil, err
 		}
 
 		// write properties that are exposed to callers
@@ -184,6 +190,18 @@ func (self *Component) writePrivateProperties(buf *bytes.Buffer) error {
 		return err
 	}
 
+}
+
+func (self *Component) writeSignals(buf *bytes.Buffer) error {
+	for _, sig := range self.Signals {
+		if data, err := sig.QML(); err == nil {
+			self.writeIndented(buf, data)
+		} else {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (self *Component) writeFunctions(buf *bytes.Buffer) error {
