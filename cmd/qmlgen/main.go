@@ -44,6 +44,18 @@ func main() {
 			Value:  `app.qml`,
 			EnvVar: `QMLGEN_OUTPUT_APPQML`,
 		},
+		cli.StringFlag{
+			Name:   `app-qrc`,
+			Usage:  `The name of the Qt Resource input manifest.`,
+			Value:  `app.qrc`,
+			EnvVar: `QMLGEN_OUTPUT_APPQRC`,
+		},
+		cli.StringFlag{
+			Name:   `app-rcc`,
+			Usage:  `The name of the Qt Resource output file.`,
+			Value:  `app.rcc`,
+			EnvVar: `QMLGEN_OUTPUT_APPRCC`,
+		},
 		cli.BoolFlag{
 			Name:  `run, r`,
 			Usage: `Run the generated project.`,
@@ -51,22 +63,31 @@ func main() {
 		cli.StringFlag{
 			Name:   `qml-runner, Q`,
 			Usage:  `Run the generated project.`,
-			EnvVar: `QMLGEN_QML_RUNNER`,
+			EnvVar: `QMLGEN_QMLSCENE_BIN`,
 			Value:  `qmlscene`,
 		},
 		cli.BoolFlag{
-			Name:  `server, s`,
-			Usage: `Run a built-in Diecast web server.`,
+			Name:   `server, s`,
+			Usage:  `Run a built-in Diecast web server.`,
+			EnvVar: `QMLGEN_SERVER`,
 		},
 		cli.StringFlag{
-			Name:  `address, a`,
-			Usage: `The address the built-in server should listen on (if enabled).`,
-			Value: `127.0.0.1:11647`,
+			Name:   `address, a`,
+			Usage:  `The address the built-in server should listen on (if enabled).`,
+			Value:  `127.0.0.1:11647`,
+			EnvVar: `QMLGEN_SERVER_ADDR`,
 		},
 		cli.StringFlag{
-			Name:  `server-root, R`,
-			Usage: `The root directory containing files the server should serve.`,
-			Value: qmlgen.ServeRoot,
+			Name:   `server-root, R`,
+			Usage:  `The root directory containing files the server should serve.`,
+			Value:  qmlgen.ServeRoot,
+			EnvVar: `QMLGEN_SERVER_ROOT`,
+		},
+		cli.StringFlag{
+			Name:   `rcc-bin`,
+			Usage:  `The name of the "rcc" resource bundler utility.`,
+			Value:  `rcc`,
+			EnvVar: `QMLGEN_RCC_BIN`,
 		},
 	}
 
@@ -78,11 +99,35 @@ func main() {
 	app.Action = func(c *cli.Context) {
 		if app, err := qmlgen.LoadFile(c.String(`config`)); err == nil {
 			app.ModuleRoot = c.String(`output-dir`)
+			qmlfile := filepath.Join(app.ModuleRoot, c.String(`app-qml`))
+			// qrcfile := filepath.Join(app.ModuleRoot, c.String(`app-qrc`))
+			// rccfile := filepath.Join(app.ModuleRoot, c.String(`app-rcc`))
 
 			os.Remove(app.ModuleRoot)
 			log.FatalIf(os.MkdirAll(app.ModuleRoot, 0755))
 
+			// generate application QML, which also populates all assets and modules in the build directory
 			if qml, err := app.QML(); err == nil {
+				// generate a Qt Resource manifest from the build directory contents
+				// if manifest, err := qmlgen.ManifestFromDir(app.ModuleRoot); err == nil {
+				// 	if _, err := fileutil.WriteFile(manifest, qrcfile); err == nil {
+				// 		// shell out to rcc to generate the qt resource bundle
+				// 		log.FatalIf(cmd(
+				// 			app.ModuleRoot,
+				// 			c.String(`rcc-bin`),
+				// 			`--output`,
+				// 			rccfile,
+				// 			`--compress`,
+				// 			`9`,
+				// 			qrcfile,
+				// 		).Run())
+				// 	} else {
+				// 		log.Fatalf("write manifest: %v", err)
+				// 	}
+				// } else {
+				// 	log.Fatalf("bad manifest: %v", err)
+				// }
+
 				switch out := c.String(`output-dir`); out {
 				case `-`, ``:
 					fmt.Println(string(qml))
@@ -93,7 +138,7 @@ func main() {
 						log.Fatal(err)
 					}
 
-					if file, err := os.Create(filepath.Join(out, c.String(`app-qml`))); err == nil {
+					if file, err := os.Create(qmlfile); err == nil {
 						defer file.Close()
 
 						if _, err := file.Write(qml); err != nil {
@@ -114,20 +159,6 @@ func main() {
 
 							qmlargs = append(qmlargs, c.String(`app-qml`))
 
-							runner := executil.Command(c.String(`qml-runner`), qmlargs...)
-							runner.Dir = app.ModuleRoot
-							runner.OnStdout = func(line string, _ bool) {
-								if line != `` {
-									log.Debugf("[cmd] %s", line)
-								}
-							}
-
-							runner.OnStderr = func(line string, _ bool) {
-								if line != `` {
-									log.Infof("[cmd] %s", line)
-								}
-							}
-
 							if c.Bool(`server`) {
 								log.Infof("[server] starting HTTP server at %s", c.String(`address`))
 
@@ -137,6 +168,7 @@ func main() {
 								}()
 							}
 
+							runner := cmd(app.ModuleRoot, c.String(`qml-runner`), qmlargs...)
 							log.Debugf("run: %s", strings.Join(runner.Args, ` `))
 							log.FatalIf(runner.Run())
 						}
@@ -153,4 +185,22 @@ func main() {
 	}
 
 	app.Run(os.Args)
+}
+
+func cmd(root string, name string, args ...string) *executil.Cmd {
+	c := executil.Command(name, args...)
+	c.Dir = root
+	c.OnStdout = func(line string, _ bool) {
+		if line != `` {
+			log.Debugf("[%s] %s", name, line)
+		}
+	}
+
+	c.OnStderr = func(line string, _ bool) {
+		if line != `` {
+			log.Infof("[%s] %s", name, line)
+		}
+	}
+
+	return c
 }
