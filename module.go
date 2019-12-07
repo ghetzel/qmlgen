@@ -2,11 +2,14 @@ package qmlgen
 
 import (
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/ghetzel/go-stockutil/fileutil"
+	"github.com/ghetzel/go-stockutil/log"
 	"github.com/ghodss/yaml"
 )
 
@@ -56,9 +59,64 @@ func (self *Module) Fetch() error {
 	}
 }
 
-func (self *Module) writeQmlFile(root string) error {
+// This function retrieves external assets for this module and all submodules recursively
+// and writes them to disk.
+func (self *Module) WriteAssets(outdir string) error {
+	for _, asset := range self.Assets {
+		if asset.Name == `` {
+			asset.Name = filepath.Base(asset.Source)
+		}
+
+		tgt := filepath.Join(outdir, asset.Name)
+		tgt = env(tgt)
+
+		if fileutil.IsNonemptyFile(tgt) {
+			log.Debugf("asset %q: %s", asset.Name, tgt)
+			continue
+		} else if rc, err := asset.Retrieve(); err == nil {
+			defer rc.Close()
+
+			// ensure parent directory exists
+			if err := os.MkdirAll(filepath.Dir(tgt), 0755); err == nil {
+				// open the destination file for writing
+				if out, err := os.Create(tgt); err == nil {
+					defer out.Close()
+
+					// copy data from source to output file
+					if n, err := io.Copy(out, rc); err == nil {
+						log.Debugf("wrote asset %q (%d bytes)", asset.Name, n)
+						out.Close()
+					} else {
+						return fmt.Errorf("write asset %q: %v", asset.Name, err)
+					}
+				} else {
+					return fmt.Errorf("asset %q: %v", asset.Name, err)
+				}
+
+				rc.Close()
+			} else {
+				return fmt.Errorf("asset %q: %v", asset.Name, err)
+			}
+		} else {
+			return fmt.Errorf("asset %q: %v", asset.Name, err)
+		}
+	}
+
+	for _, mod := range self.Modules {
+		if err := mod.WriteAssets(outdir); err != nil {
+			return fmt.Errorf("module %s: %v", err)
+		}
+	}
+
+	return nil
+}
+
+// This function writes inline modules out to files.  Modules can optionally be
+// sourced from a remote location, in which case this function will retrieve the
+// data from that location first.
+func (self *Module) WriteModules(outdir string) error {
 	if err := self.Fetch(); err == nil {
-		tgt := env(filepath.Join(root, self.Name+`.qml`))
+		tgt := env(filepath.Join(outdir, self.Name+`.qml`))
 
 		if err := os.MkdirAll(filepath.Dir(tgt), 0755); err == nil {
 			if out, err := os.Create(tgt); err == nil {
@@ -99,7 +157,7 @@ func (self *Module) writeQmlFile(root string) error {
 
 	// write out submodules
 	for _, mod := range self.Modules {
-		if err := mod.writeQmlFile(root); err != nil {
+		if err := mod.WriteModules(outdir); err != nil {
 			return err
 		}
 	}

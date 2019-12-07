@@ -98,22 +98,23 @@ func main() {
 
 	app.Action = func(c *cli.Context) {
 		if app, err := qmlgen.LoadFile(c.String(`config`)); err == nil {
-			app.ModuleRoot = c.String(`output-dir`)
-			qmlfile := filepath.Join(app.ModuleRoot, c.String(`app-qml`))
-			// qrcfile := filepath.Join(app.ModuleRoot, c.String(`app-qrc`))
-			// rccfile := filepath.Join(app.ModuleRoot, c.String(`app-rcc`))
+			app.OutputDir = c.String(`output-dir`)
+			qmlfile := filepath.Join(app.OutputDir, c.String(`app-qml`))
+			// qrcfile := filepath.Join(app.OutputDir, c.String(`app-qrc`))
+			// rccfile := filepath.Join(app.OutputDir, c.String(`app-rcc`))
 
-			os.Remove(app.ModuleRoot)
-			log.FatalIf(os.MkdirAll(app.ModuleRoot, 0755))
+			os.Remove(app.OutputDir)
+			log.FatalIf(os.MkdirAll(app.OutputDir, 0755))
 
 			// generate application QML, which also populates all assets and modules in the build directory
 			if qml, err := app.QML(); err == nil {
+				log.FatalIf(app.WriteModuleManifest())
 				// generate a Qt Resource manifest from the build directory contents
-				// if manifest, err := qmlgen.ManifestFromDir(app.ModuleRoot); err == nil {
+				// if manifest, err := qmlgen.ManifestFromDir(app.OutputDir); err == nil {
 				// 	if _, err := fileutil.WriteFile(manifest, qrcfile); err == nil {
 				// 		// shell out to rcc to generate the qt resource bundle
 				// 		log.FatalIf(cmd(
-				// 			app.ModuleRoot,
+				// 			app.OutputDir,
 				// 			c.String(`rcc-bin`),
 				// 			`--output`,
 				// 			rccfile,
@@ -168,7 +169,7 @@ func main() {
 								}()
 							}
 
-							runner := cmd(app.ModuleRoot, c.String(`qml-runner`), qmlargs...)
+							runner := cmd(app.OutputDir, c.String(`qml-runner`), qmlargs...)
 							log.Debugf("run: %s", strings.Join(runner.Args, ` `))
 							log.FatalIf(runner.Run())
 						}

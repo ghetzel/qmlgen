@@ -11,9 +11,9 @@ import (
 const Indent = `  `
 
 type Layout struct {
-	Fill             string `json:"fill,omitempty"`
-	HorizontalCenter string `json:"center"`
-	VerticalCenter   string `json:"vcenter"`
+	Fill             interface{} `json:"fill,omitempty"`
+	HorizontalCenter string      `json:"center"`
+	VerticalCenter   string      `json:"vcenter"`
 }
 
 type Component struct {
@@ -128,9 +128,11 @@ func (self *Component) QML(depth int) ([]byte, error) {
 func (self *Component) applyLayoutProperties() {
 	if layout := self.Layout; layout != nil {
 		// handle fill
-		if strings.HasPrefix(layout.Fill, `@`) {
-			self.Set(`anchors.fill`, `{`+strings.TrimPrefix(layout.Fill, `@`)+`}`)
-		} else if typeutil.Bool(layout.Fill) {
+		fill := typeutil.String(layout.Fill)
+
+		if strings.HasPrefix(fill, `@`) {
+			self.Set(`anchors.fill`, `{`+strings.TrimPrefix(fill, `@`)+`}`)
+		} else if typeutil.Bool(fill) {
 			self.Set(`anchors.fill`, `{parent}`)
 		}
 

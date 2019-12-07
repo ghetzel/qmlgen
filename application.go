@@ -1,28 +1,25 @@
 package qmlgen
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/ghetzel/go-stockutil/fileutil"
-	"github.com/ghetzel/go-stockutil/log"
 	"github.com/ghetzel/go-stockutil/rxutil"
 	"github.com/ghetzel/go-stockutil/stringutil"
 	"github.com/ghodss/yaml"
 )
 
 type Application struct {
-	Imports    []string   `json:"imports,omitempty"`
-	Assets     []Asset    `json:"assets,omitempty"`
-	Modules    []*Module  `json:"modules,omitempty"`
-	Root       *Component `json:"root,omitempty"`
-	ModuleRoot string     `json:"module_root"`
-	filename   string
+	Module
+	OutputDir string `json:"-"`
+	filename  string
 }
 
 func LoadFile(yamlFilename string) (*Application, error) {
@@ -51,69 +48,6 @@ func LoadFile(yamlFilename string) (*Application, error) {
 	}
 }
 
-// This function retrieves external assets from various data sources and
-// writes them out to files.  These assets may be any type of file.
-func (self *Application) WriteAssets() error {
-	for _, mod := range self.Modules {
-		self.Assets = append(self.Assets, mod.Assets...)
-	}
-
-	for _, asset := range self.Assets {
-		if asset.Name == `` {
-			asset.Name = filepath.Base(asset.Source)
-		}
-
-		tgt := filepath.Join(self.ModuleRoot, asset.Name)
-		tgt = env(tgt)
-
-		if fileutil.IsNonemptyFile(tgt) {
-			log.Debugf("asset %q: %s", asset.Name, tgt)
-			continue
-		} else if rc, err := asset.Retrieve(); err == nil {
-			defer rc.Close()
-
-			// ensure parent directory exists
-			if err := os.MkdirAll(filepath.Dir(tgt), 0755); err == nil {
-				// open the destination file for writing
-				if out, err := os.Create(tgt); err == nil {
-					defer out.Close()
-
-					// copy data from source to output file
-					if n, err := io.Copy(out, rc); err == nil {
-						log.Debugf("wrote asset %q (%d bytes)", asset.Name, n)
-						out.Close()
-					} else {
-						return fmt.Errorf("write asset %q: %v", asset.Name, err)
-					}
-				} else {
-					return fmt.Errorf("asset %q: %v", asset.Name, err)
-				}
-
-				rc.Close()
-			} else {
-				return fmt.Errorf("asset %q: %v", asset.Name, err)
-			}
-		} else {
-			return fmt.Errorf("asset %q: %v", asset.Name, err)
-		}
-	}
-
-	return nil
-}
-
-// This function writes inline modules out to files.  Modules can optionally be
-// sourced from a remote location, in which case this function will retrieve the
-// data from that location first.
-func (self *Application) WriteModules() error {
-	for _, mod := range self.Modules {
-		if err := mod.writeQmlFile(self.ModuleRoot); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 func (self *Application) QML() ([]byte, error) {
 	var out bytes.Buffer
 
@@ -127,20 +61,20 @@ func (self *Application) QML() ([]byte, error) {
 	}
 
 	// retrieve and write out all modules
-	if err := self.WriteModules(); err == nil {
+	if err := self.WriteModules(self.OutputDir); err == nil {
 		out.WriteString(fmt.Sprintf("import %q\n", `.`))
 	} else {
 		return nil, err
 	}
 
 	// retrieve and write out all assets
-	if err := self.WriteAssets(); err != nil {
+	if err := self.WriteAssets(self.OutputDir); err != nil {
 		return nil, err
 	}
 
 	out.WriteString("\n")
 
-	if root := self.Root; root != nil {
+	if root := self.Definition; root != nil {
 		root.ID = `root`
 
 		if data, err := root.QML(0); err == nil {
@@ -152,6 +86,68 @@ func (self *Application) QML() ([]byte, error) {
 		}
 	} else {
 		return nil, fmt.Errorf("invalid root definition")
+	}
+}
+
+func (self *Application) WriteModuleManifest() error {
+	if qmldir, err := os.Create(filepath.Join(self.OutputDir, `qmldir`)); err == nil {
+		defer qmldir.Close()
+
+		if qmlfiles, err := filepath.Glob(filepath.Join(self.OutputDir, `*.qml`)); err == nil {
+			w := bufio.NewWriter(qmldir)
+
+			if _, err := w.WriteString("module Application\n"); err != nil {
+				return err
+			}
+
+			sort.Strings(qmlfiles)
+
+			var singletons []string
+			var modules []string
+
+			for _, qmlfile := range qmlfiles {
+				if lines, err := fileutil.ReadAllLines(qmlfile); err == nil {
+					var singleton bool
+					var version string = `1.0`
+					var path string = strings.TrimPrefix(qmlfile, self.OutputDir+`/`)
+					var base string = strings.TrimSuffix(filepath.Base(qmlfile), filepath.Ext(qmlfile))
+
+					if base == `` {
+						continue
+					}
+
+				LineLoop:
+					for _, line := range lines {
+						if rxutil.Match(`^\s*pragma\s+Singleton\s*$`, line) != nil {
+							singleton = true
+							break LineLoop
+						}
+					}
+
+					if singleton {
+						singletons = append(singletons, `singleton `+base+` `+version+` `+path)
+					} else {
+						modules = append(modules, base+` `+version+` `+path)
+					}
+				} else {
+					return fmt.Errorf("read %s: %v", qmlfile, err)
+				}
+			}
+
+			if _, err := w.WriteString(strings.Join(singletons, "\n") + "\n\n"); err != nil {
+				return fmt.Errorf("bad write: %v", err)
+			}
+
+			if _, err := w.WriteString(strings.Join(modules, "\n") + "\n"); err != nil {
+				return fmt.Errorf("bad write: %v", err)
+			}
+
+			return w.Flush()
+		} else {
+			return fmt.Errorf("glob: %v", err)
+		}
+	} else {
+		return fmt.Errorf("qmldir: %v", err)
 	}
 }
 

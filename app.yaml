@@ -1,17 +1,13 @@
-dependencies:
-  - name: jsonpath.js
-    source: https://raw.githubusercontent.com/ghetzel/qmlgen/master/lib/jsonpath.js
-
-  - name: JSONListModel.qml
-    source: https://raw.githubusercontent.com/ghetzel/qmlgen/master/lib/JSONListModel.qml
-
+assets:
+  - source: https://raw.githubusercontent.com/ghetzel/qmlgen/master/lib/jsonpath.js
+  - source: https://raw.githubusercontent.com/ghetzel/qmlgen/master/lib/JSONListModel.qml
 imports:
   - QtQuick 2.11
   - QtQuick.Layouts 1.11
   - QtQuick.Controls 2.4
   - QtQuick.Window 2.11
   - QtMultimedia 5.11
-root:
+definition:
   type: ApplicationWindow
   public:
     - name: server
