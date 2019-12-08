@@ -1,6 +1,7 @@
 package qmlgen
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/ghetzel/go-stockutil/fileutil"
 	"github.com/ghetzel/go-stockutil/maputil"
+	"github.com/ghetzel/go-stockutil/rxutil"
 	"github.com/ghetzel/go-stockutil/sliceutil"
 	"github.com/ghetzel/go-stockutil/stringutil"
 	"github.com/ghetzel/go-stockutil/typeutil"
@@ -20,7 +22,7 @@ import (
 var QmlScene = `qmlscene`
 var QmlMaxMinorVersion = 64
 
-type qmlLiteral string
+type Literal string
 
 // So...this one's weird.
 //
@@ -37,7 +39,7 @@ type qmlLiteral string
 // but ALSO uses Unicode curly braces ⦃⦄ not likely to appear in valid JavaScript code.
 // This lets us find+delete these sequences later.
 //
-func (self qmlLiteral) MarshalJSON() ([]byte, error) {
+func (self Literal) MarshalJSON() ([]byte, error) {
 	return []byte(`"` + "\u2983" + string(self) + "\u2984" + `"`), nil
 }
 
@@ -45,6 +47,20 @@ func jsonPostProcess(in []byte) string {
 	out := string(in)
 	out = strings.Replace(out, "\"\u2983", "", -1)
 	out = strings.Replace(out, "\u2984\"", "", -1)
+
+	for {
+		if match := rxutil.Match(`\\[uU](?P<chr>[0-9a-fA-F]{4})`, out); match != nil {
+			g := strings.TrimLeft(match.Group(`chr`), `0`)
+
+			if chr, err := hex.DecodeString(g); err == nil {
+				out = strings.Replace(out, match.Group(0), string(chr), -1)
+			} else {
+				panic("invalid hex match: " + err.Error())
+			}
+		} else {
+			break
+		}
+	}
 
 	return out
 }
@@ -144,7 +160,7 @@ func qmlvalue(value interface{}) string {
 		if typeutil.IsMap(value) {
 			value = maputil.Apply(value, func(key []string, value interface{}) (interface{}, bool) {
 				if qv := qmlstring(value); qv != `` {
-					return qmlLiteral(qv), true
+					return Literal(qv), true
 				} else if vS, ok := value.(string); ok {
 					return env(vS), true
 				} else {
@@ -154,7 +170,7 @@ func qmlvalue(value interface{}) string {
 		} else if typeutil.IsArray(value) {
 			value = sliceutil.Map(value, func(i int, value interface{}) interface{} {
 				if qv := qmlstring(value); qv != `` {
-					return qmlLiteral(qv)
+					return Literal(qv)
 				} else if vS, ok := value.(string); ok {
 					return env(vS)
 				} else {

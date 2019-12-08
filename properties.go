@@ -2,18 +2,53 @@ package qmlgen
 
 import (
 	"bytes"
+	"fmt"
+
+	"github.com/ghetzel/go-stockutil/maputil"
+	"github.com/ghetzel/go-stockutil/sliceutil"
+	"github.com/ghetzel/go-stockutil/typeutil"
 )
 
-type Property struct {
-	Type   string      `json:"type,omitempty"`
-	Name   string      `json:"name,omitempty"`
-	Value  interface{} `json:"value,omitempty"`
-	expose bool
+// specifies a list of properties that, when encountered, should be treated as inline
+// component declarations IFF the property value is an object.
+var ElementalProperties = []string{
+	`model`,
+	`delegate`,
+	`style`,
 }
 
-func (self Property) String() (out string) {
+var ForceInlineKey = `_inline`
+
+type Property struct {
+	Type     string      `json:"type,omitempty"`
+	Name     string      `json:"name,omitempty"`
+	Value    interface{} `json:"value,omitempty"`
+	ReadOnly bool        `json:"readonly,omitempty"`
+	expose   bool
+}
+
+func (self Property) shouldInline() bool {
+	if typeutil.IsMap(self.Value) {
+		// if the "_inline" value is present, honor it (true or false)
+		if inline := maputil.M(self.Value).Get(ForceInlineKey); !inline.IsNil() {
+			return inline.Bool()
+		} else if sliceutil.ContainsString(ElementalProperties, self.Name) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (self Property) QML() ([]byte, error) {
+	var out bytes.Buffer
+
 	if self.expose {
-		out = `property `
+		if self.ReadOnly {
+			out.WriteString(`readonly `)
+		}
+
+		out.WriteString(`property `)
 
 		if self.Type == `` {
 			self.Type = `var`
@@ -21,16 +56,29 @@ func (self Property) String() (out string) {
 	}
 
 	if self.Type != `` {
-		out += self.Type + ` `
+		out.WriteString(self.Type + ` `)
 	}
 
-	out += self.Name
+	out.WriteString(self.Name)
 
-	if self.Value != nil {
-		out += `: ` + qmlvalue(self.Value)
+	if self.shouldInline() {
+		inline := new(Component)
+
+		if err := maputil.TaggedStructFromMap(self.Value, inline, `json`); err == nil {
+			if qml, err := inline.QML(0); err == nil {
+				out.WriteString(`: `)
+				out.Write(qml)
+			} else {
+				return nil, fmt.Errorf("bad inline: %v", err)
+			}
+		} else {
+			return nil, fmt.Errorf("bad inline: %v", err)
+		}
+	} else if self.Value != nil {
+		out.WriteString(`: ` + qmlvalue(self.Value))
 	}
 
-	return
+	return out.Bytes(), nil
 }
 
 type Properties []*Property
@@ -39,7 +87,12 @@ func (self Properties) QML() ([]byte, error) {
 	var out bytes.Buffer
 
 	for _, property := range self {
-		out.WriteString(property.String() + "\n")
+		if qml, err := property.QML(); err == nil {
+			out.Write(qml)
+			out.WriteString("\n")
+		} else {
+			return nil, fmt.Errorf("property %s: %v", property.Name, err)
+		}
 	}
 
 	return out.Bytes(), nil

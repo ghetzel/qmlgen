@@ -26,3 +26,7 @@ run:
 	# mkdir build
 	$(BIN)
 	cd build && qmlscene app.qml
+
+arm:
+	GOARCH=arm go build -o bin/qmlgen-linux-arm cmd/qmlgen/*.go
+	cp bin/qmlgen-linux-arm ~/bin/qmlgen-linux-arm

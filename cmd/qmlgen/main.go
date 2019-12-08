@@ -5,11 +5,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/ghetzel/cli"
 	"github.com/ghetzel/go-stockutil/executil"
 	"github.com/ghetzel/go-stockutil/fileutil"
 	"github.com/ghetzel/go-stockutil/log"
+	"github.com/ghetzel/go-stockutil/netutil"
 	"github.com/ghetzel/qmlgen"
 )
 
@@ -89,6 +91,19 @@ func main() {
 			Value:  `rcc`,
 			EnvVar: `QMLGEN_RCC_BIN`,
 		},
+		cli.BoolFlag{
+			Name:  `wait-for-network`,
+			Usage: `Specify that connectivity to a routable default gateway should be verified before running QML`,
+		},
+		cli.StringFlag{
+			Name:  `wait-for-network-address`,
+			Usage: `If given, this address will be tested for connectivity instead of the default gateway.`,
+		},
+		cli.DurationFlag{
+			Name:  `wait-for-network-timeout`,
+			Usage: `How long to wait for the network before running the QML anyway (0 = infinite)`,
+			Value: 30 * time.Second,
+		},
 	}
 
 	app.Before = func(c *cli.Context) error {
@@ -147,6 +162,26 @@ func main() {
 						}
 
 						if c.Bool(`run`) {
+							// wait for network
+							if c.Bool(`wait-for-network`) {
+								var err error
+								var timeout time.Duration = c.Duration(`wait-for-network-timeout`)
+
+								log.Infof("Waiting for network to come up...")
+
+								if addr := c.String(`wait-for-network-address`); addr == `` {
+									err = netutil.WaitForGatewayPing(timeout)
+								} else {
+									err = netutil.WaitForPing(addr, timeout)
+								}
+
+								if err == nil {
+									log.Noticef("Network is online")
+								} else {
+									log.Errorf("wait for network failed: %v", err)
+								}
+							}
+
 							var qmlargs []string
 							var argproc bool
 
