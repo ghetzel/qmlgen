@@ -21,6 +21,7 @@ type Component struct {
 	ID         string                 `json:"id,omitempty"`
 	Public     Properties             `json:"public,omitempty"`
 	Properties map[string]interface{} `json:"properties,omitempty"`
+	Behaviors  []Behavior             `json:"behaviors,omitempty"`
 	Functions  []Function             `json:"functions,omitempty"`
 	Components []*Component           `json:"components,omitempty"`
 	Layout     *Layout                `json:"layout,omitempty"`
@@ -106,7 +107,12 @@ func (self *Component) QML(depth int) ([]byte, error) {
 			return nil, err
 		}
 
-		// write out child components (recursive)
+		// write behaviors
+		if err := self.writeBehaviors(&out); err != nil {
+			return nil, err
+		}
+
+		// write out subcomponents (recursive)
 		for _, child := range self.Components {
 			if data, err := child.QML(depth + 1); err == nil {
 				for _, line := range lines(data) {
@@ -209,6 +215,18 @@ func (self *Component) writeSignals(buf *bytes.Buffer) error {
 func (self *Component) writeFunctions(buf *bytes.Buffer) error {
 	for _, fn := range self.Functions {
 		if data, err := fn.QML(); err == nil {
+			self.writeIndented(buf, data)
+		} else {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (self *Component) writeBehaviors(buf *bytes.Buffer) error {
+	for _, b := range self.Behaviors {
+		if data, err := b.QML(); err == nil {
 			self.writeIndented(buf, data)
 		} else {
 			return err
