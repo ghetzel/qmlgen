@@ -1,4 +1,4 @@
-package qmlgen
+package hydra
 
 import (
 	"fmt"

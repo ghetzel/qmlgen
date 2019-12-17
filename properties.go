@@ -1,4 +1,4 @@
-package qmlgen
+package hydra
 
 import (
 	"bytes"
@@ -20,10 +20,10 @@ var ElementalProperties = []string{
 var ForceInlineKey = `_inline`
 
 type Property struct {
-	Type     string      `json:"type,omitempty"`
-	Name     string      `json:"name,omitempty"`
-	Value    interface{} `json:"value,omitempty"`
-	ReadOnly bool        `json:"readonly,omitempty"`
+	Type     string      `yaml:"type,omitempty"     json:"type,omitempty"`
+	Name     string      `yaml:"name,omitempty"     json:"name,omitempty"`
+	Value    interface{} `yaml:"value,omitempty"    json:"value,omitempty"`
+	ReadOnly bool        `yaml:"readonly,omitempty" json:"readonly,omitempty"`
 	expose   bool
 }
 

@@ -1,7 +1,7 @@
 .EXPORT_ALL_VARIABLES:
 
 GO111MODULE ?= on
-BIN         ?= bin/qmlgen-$(shell go env GOOS)-$(shell go env GOARCH)
+BIN         ?= bin/hydra-$(shell go env GOOS)-$(shell go env GOARCH)
 
 .PHONY: fmt deps test $(BIN)
 
@@ -18,8 +18,8 @@ test:
 	go test ./...
 
 $(BIN):
-	go build -o $(@) cmd/qmlgen/*.go
-	-which qmlgen && $(@) -v && cp $(@) $(shell which qmlgen)
+	go build -o $(@) cmd/hydra/*.go
+	-which hydra && $(@) -v && cp $(@) $(shell which hydra)
 
 run:
 	# -rm -rf build
@@ -28,5 +28,5 @@ run:
 	cd build && qmlscene app.qml
 
 arm:
-	GOARCH=arm go build -o bin/qmlgen-linux-arm cmd/qmlgen/*.go
-	cp bin/qmlgen-linux-arm ~/bin/qmlgen-linux-arm
+	GOARCH=arm go build -o bin/hydra-linux-arm cmd/hydra/*.go
+	cp bin/hydra-linux-arm ~/bin/hydra-linux-arm

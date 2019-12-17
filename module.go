@@ -1,4 +1,4 @@
-package qmlgen
+package hydra
 
 import (
 	"fmt"
@@ -14,12 +14,12 @@ import (
 )
 
 type Module struct {
-	Name       string     `json:"name,omitempty"`
-	Source     string     `json:"source,omitempty"`
-	Imports    []string   `json:"imports,omitempty"`
-	Assets     []Asset    `json:"assets,omitempty"`
-	Modules    []*Module  `json:"modules,omitempty"`
-	Definition *Component `json:"definition,omitempty"`
+	Name       string     `yaml:"name,omitempty"       json:"name,omitempty"`
+	Source     string     `yaml:"source,omitempty"     json:"source,omitempty"`
+	Imports    []string   `yaml:"imports,omitempty"    json:"imports,omitempty"`
+	Assets     []Asset    `yaml:"assets,omitempty"     json:"assets,omitempty"`
+	Modules    []*Module  `yaml:"modules,omitempty"    json:"modules,omitempty"`
+	Definition *Component `yaml:"definition,omitempty" json:"definition,omitempty"`
 }
 
 func (self *Module) clear() {

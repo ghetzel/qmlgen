@@ -1,4 +1,4 @@
-package qmlgen
+package hydra
 
 import (
 	"bytes"
@@ -11,21 +11,21 @@ import (
 const Indent = `  `
 
 type Layout struct {
-	Fill             interface{} `json:"fill,omitempty"`
-	HorizontalCenter string      `json:"center"`
-	VerticalCenter   string      `json:"vcenter"`
+	Fill             interface{} `yaml:"fill,omitempty" json:"fill,omitempty"`
+	HorizontalCenter string      `yaml:"center"         json:"center"`
+	VerticalCenter   string      `yaml:"vcenter"        json:"vcenter"`
 }
 
 type Component struct {
-	Type       string                 `json:"type,omitempty"`
-	ID         string                 `json:"id,omitempty"`
-	Public     Properties             `json:"public,omitempty"`
-	Properties map[string]interface{} `json:"properties,omitempty"`
-	Behaviors  []Behavior             `json:"behaviors,omitempty"`
-	Functions  []Function             `json:"functions,omitempty"`
-	Components []*Component           `json:"components,omitempty"`
-	Layout     *Layout                `json:"layout,omitempty"`
-	Signals    []*Signal              `json:"signals,omitempty"`
+	Type       string                 `yaml:"type,omitempty"       json:"type,omitempty"`
+	ID         string                 `yaml:"id,omitempty"         json:"id,omitempty"`
+	Public     Properties             `yaml:"public,omitempty"     json:"public,omitempty"`
+	Properties map[string]interface{} `yaml:"properties,omitempty" json:"properties,omitempty"`
+	Behaviors  []Behavior             `yaml:"behaviors,omitempty"  json:"behaviors,omitempty"`
+	Functions  []Function             `yaml:"functions,omitempty"  json:"functions,omitempty"`
+	Components []*Component           `yaml:"components,omitempty" json:"components,omitempty"`
+	Layout     *Layout                `yaml:"layout,omitempty"     json:"layout,omitempty"`
+	Signals    []*Signal              `yaml:"signals,omitempty"    json:"signals,omitempty"`
 	private    Properties
 }
 

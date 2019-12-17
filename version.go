@@ -1,3 +1,3 @@
-package qmlgen
+package hydra
 
-const Version = `0.0.10`
+const Version = `0.1.0`

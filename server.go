@@ -1,4 +1,4 @@
-package qmlgen
+package hydra
 
 import (
 	"fmt"
@@ -16,6 +16,7 @@ func Serve(address string) error {
 		server := diecast.NewServer(ServeRoot)
 		server.Address = address
 		server.BindingPrefix = fmt.Sprintf("http://127.0.0.1:%s", port)
+		server.VerifyFile = ``
 
 		if fileutil.IsNonemptyFile(DiecastConfig) {
 			if err := server.LoadConfig(DiecastConfig); err != nil {

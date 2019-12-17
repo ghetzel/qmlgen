@@ -1,4 +1,4 @@
-package qmlgen
+package hydra
 
 import (
 	"bufio"
@@ -13,12 +13,12 @@ import (
 	"github.com/ghetzel/go-stockutil/fileutil"
 	"github.com/ghetzel/go-stockutil/rxutil"
 	"github.com/ghetzel/go-stockutil/stringutil"
-	"github.com/ghodss/yaml"
+	"gopkg.in/yaml.v2"
 )
 
 type Application struct {
-	Module
-	OutputDir string `json:"-"`
+	Module    `yaml:",inline"`
+	OutputDir string `yaml:"-" json:"-"`
 	filename  string
 }
 
@@ -30,7 +30,7 @@ func LoadFile(yamlFilename string) (*Application, error) {
 			if data, err := ioutil.ReadAll(file); err == nil {
 				var app Application
 
-				if err := yaml.Unmarshal(data, &app); err == nil {
+				if err := yaml.UnmarshalStrict(data, &app); err == nil {
 					app.filename = yamlFilename
 
 					return &app, nil
