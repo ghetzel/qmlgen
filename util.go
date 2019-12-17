@@ -173,12 +173,18 @@ func qmlvalue(value interface{}) string {
 					return Literal(qv)
 				} else if vS, ok := value.(string); ok {
 					return env(vS)
+				} else if typeutil.IsMap(value) {
+					return typeutil.MapNative(value)
 				} else {
 					return value
 				}
 			})
 		} else if vS, ok := value.(string); ok {
 			value = env(vS)
+		}
+
+		if typeutil.IsMap(value) {
+			value = typeutil.MapNative(value)
 		}
 
 		// JSONify and return
