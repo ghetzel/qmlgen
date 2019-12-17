@@ -7,9 +7,9 @@ import (
 )
 
 type Function struct {
-	Name       string   `json:"name"`
-	Arguments  []string `json:"args"`
-	Definition string   `json:"definition"`
+	Name       string   `yaml:"name"       json:"name"`
+	Arguments  []string `yaml:"args"       json:"args"`
+	Definition string   `yaml:"definition" json:"definition"`
 }
 
 func (self *Function) Validate() error {
