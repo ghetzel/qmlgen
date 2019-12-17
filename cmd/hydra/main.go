@@ -23,12 +23,6 @@ func main() {
 			EnvVar: `LOGLEVEL`,
 		},
 		cli.StringFlag{
-			Name:   `config, c`,
-			Usage:  `The configuration YAML to load.`,
-			Value:  `app.yaml`,
-			EnvVar: `HYDRA_CONFIG`,
-		},
-		cli.StringFlag{
 			Name:   `output-dir, o`,
 			Usage:  `The output directory to write the QML to.`,
 			Value:  `build`,
@@ -89,7 +83,14 @@ func main() {
 	}
 
 	app.Action = func(c *cli.Context) {
-		if app, err := hydra.LoadFile(c.String(`config`)); err == nil {
+		appcfg := c.Args().First()
+
+		switch appcfg {
+		case `--`, ``:
+			appcfg = `app.yaml`
+		}
+
+		if app, err := hydra.LoadFile(appcfg); err == nil {
 			if c.Bool(`run`) {
 				log.FatalIf(hydra.RunWithOptions(app, hydra.RunOptions{
 					QmlsceneBin:           c.String(`qml-runner`),
