@@ -41,8 +41,6 @@ func (self *RunOptions) Valid() error {
 	return nil
 }
 
-// func NewFromURL(url string) (*Application, error) { }
-
 func Generate(entrypoint string, app *Application) error {
 	if app == nil {
 		return fmt.Errorf("no application provided")

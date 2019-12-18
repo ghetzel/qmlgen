@@ -85,12 +85,7 @@ func main() {
 	app.Action = func(c *cli.Context) {
 		appcfg := c.Args().First()
 
-		switch appcfg {
-		case `--`, ``:
-			appcfg = `app.yaml`
-		}
-
-		if app, err := hydra.LoadFile(appcfg); err == nil {
+		if app, err := hydra.Load(appcfg); err == nil {
 			if c.Bool(`run`) {
 				log.FatalIf(hydra.RunWithOptions(app, hydra.RunOptions{
 					QmlsceneBin:           c.String(`qml-runner`),
