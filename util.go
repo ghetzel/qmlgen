@@ -1,6 +1,7 @@
 package hydra
 
 import (
+	"bufio"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -9,9 +10,11 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/ghetzel/go-stockutil/fileutil"
+	"github.com/ghetzel/go-stockutil/log"
 	"github.com/ghetzel/go-stockutil/maputil"
 	"github.com/ghetzel/go-stockutil/rxutil"
 	"github.com/ghetzel/go-stockutil/sliceutil"
@@ -93,9 +96,11 @@ func fetch(uri string) (io.ReadCloser, error) {
 				return nil, fmt.Errorf("http: %v", err)
 			}
 		case `file`, ``:
-			if f, err := os.Open(fileutil.MustExpandUser(
+			filename := fileutil.MustExpandUser(
 				filepath.Join(u.Host, u.Path),
-			)); err == nil {
+			)
+
+			if f, err := os.Open(filename); err == nil {
 				rc = f
 			} else {
 				return nil, fmt.Errorf("file: %v", err)
@@ -143,6 +148,15 @@ func qmlstring(value interface{}) string {
 	} else if strings.HasSuffix(s, `vh`) {
 		f := typeutil.Float(strings.TrimSuffix(s, `vh`)) / 100.0
 		return fmt.Sprintf("(root.height * %f)", f)
+
+	} else if strings.HasSuffix(s, `pw`) {
+		f := typeutil.Float(strings.TrimSuffix(s, `pw`)) / 100.0
+		return fmt.Sprintf("(parent.width * %f)", f)
+
+	} else if strings.HasSuffix(s, `ph`) {
+		f := typeutil.Float(strings.TrimSuffix(s, `ph`)) / 100.0
+		return fmt.Sprintf("(parent.height * %f)", f)
+
 	} else {
 		return ``
 	}
@@ -158,40 +172,116 @@ func qmlvalue(value interface{}) string {
 
 		// Environment variable expansion (works on strings, and recursively through objects and arrays)
 		if typeutil.IsMap(value) {
-			value = maputil.Apply(value, func(key []string, value interface{}) (interface{}, bool) {
-				if qv := qmlstring(value); qv != `` {
-					return Literal(qv), true
-				} else if vS, ok := value.(string); ok {
-					return env(vS), true
-				} else {
-					return nil, false
-				}
-			})
+			value = maputil.Apply(value, qmlMapValueFunc)
 		} else if typeutil.IsArray(value) {
-			value = sliceutil.Map(value, func(i int, value interface{}) interface{} {
-				if qv := qmlstring(value); qv != `` {
-					return Literal(qv)
-				} else if vS, ok := value.(string); ok {
-					return env(vS)
-				} else if typeutil.IsMap(value) {
-					return typeutil.MapNative(value)
-				} else {
-					return value
-				}
-			})
+			value = sliceutil.Map(value, qmlSliceValueFunc)
 		} else if vS, ok := value.(string); ok {
 			value = env(vS)
-		}
-
-		if typeutil.IsMap(value) {
-			value = typeutil.MapNative(value)
 		}
 
 		// JSONify and return
 		if data, err := json.MarshalIndent(value, ``, Indent); err == nil {
 			return jsonPostProcess(data)
 		} else {
-			panic("invalid json: " + err.Error())
+			log.Dump(value)
+			panic(fmt.Sprintf("qmlvalue(%T): %v", value, err))
 		}
+	}
+}
+
+func qmlSliceValueFunc(i int, value interface{}) interface{} {
+	if qv := qmlstring(value); qv != `` {
+		return Literal(qv)
+	} else if vS, ok := value.(string); ok {
+		return env(vS)
+	} else if typeutil.IsMap(value) {
+		return maputil.Apply(value, qmlMapValueFunc)
+	} else {
+		return value
+	}
+}
+
+func qmlMapValueFunc(key []string, value interface{}) (interface{}, bool) {
+	if qv := qmlstring(value); qv != `` {
+		return Literal(qv), true
+	} else if vS, ok := value.(string); ok {
+		return env(vS), true
+	} else if typeutil.IsMap(value) {
+		return typeutil.MapNative(value), true
+	} else {
+		return nil, false
+	}
+}
+
+func writeQmldir(outdir string, modname string) error {
+	path := filepath.Join(outdir, `qmldir`)
+
+	if modname == `` {
+		modname = stringutil.Camelize(filepath.Base(outdir))
+	}
+
+	if qmldir, err := os.Create(path); err == nil {
+		log.Debugf("qmldir: %s", path)
+		defer qmldir.Close()
+
+		if qmlfiles, err := filepath.Glob(filepath.Join(outdir, `*.qml`)); err == nil {
+			w := bufio.NewWriter(qmldir)
+
+			if _, err := w.WriteString("module " + modname + "\n"); err != nil {
+				return err
+			}
+
+			sort.Strings(qmlfiles)
+
+			var singletons []string
+			var modules []string
+
+			for _, qmlfile := range qmlfiles {
+				if lines, err := fileutil.ReadAllLines(qmlfile); err == nil {
+					var singleton bool
+					var version string = `1.0`
+					var path string = strings.TrimPrefix(qmlfile, outdir+`/`)
+					var base string = strings.TrimSuffix(filepath.Base(qmlfile), filepath.Ext(qmlfile))
+
+					if base == `` {
+						continue
+					}
+
+				LineLoop:
+					for _, line := range lines {
+						if rxutil.Match(`^\s*pragma\s+Singleton\s*$`, line) != nil {
+							singleton = true
+							break LineLoop
+						}
+					}
+
+					if singleton {
+						singletons = append(singletons, `singleton `+base+` `+version+` `+path)
+					} else {
+						modules = append(modules, base+` `+version+` `+path)
+					}
+				} else {
+					return fmt.Errorf("read %s: %v", qmlfile, err)
+				}
+			}
+
+			if len(singletons) > 0 {
+				if _, err := w.WriteString(strings.Join(singletons, "\n") + "\n\n"); err != nil {
+					return fmt.Errorf("bad write: %v", err)
+				}
+			}
+
+			if len(modules) > 0 {
+				if _, err := w.WriteString(strings.Join(modules, "\n") + "\n"); err != nil {
+					return fmt.Errorf("bad write: %v", err)
+				}
+			}
+
+			return w.Flush()
+		} else {
+			return fmt.Errorf("glob: %v", err)
+		}
+	} else {
+		return fmt.Errorf("qmldir: %v", err)
 	}
 }

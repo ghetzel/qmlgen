@@ -10,7 +10,7 @@ import (
 
 	"github.com/ghetzel/go-stockutil/fileutil"
 	"github.com/ghetzel/go-stockutil/log"
-	"github.com/ghodss/yaml"
+	"gopkg.in/yaml.v2"
 )
 
 type Module struct {
@@ -20,6 +20,7 @@ type Module struct {
 	Assets     []Asset    `yaml:"assets,omitempty"     json:"assets,omitempty"`
 	Modules    []*Module  `yaml:"modules,omitempty"    json:"modules,omitempty"`
 	Definition *Component `yaml:"definition,omitempty" json:"definition,omitempty"`
+	Singleton  bool       `yaml:"singleton,omitempty"  json:"singleton,omitempty"`
 }
 
 func (self *Module) clear() {
@@ -27,45 +28,106 @@ func (self *Module) clear() {
 	self.Definition = nil
 }
 
-func (self *Module) Fetch() error {
+func (self *Module) fetchAt(srcfile string) error {
 	name := self.Name
+
+	if rc, err := fetch(srcfile); err == nil {
+		defer rc.Close()
+
+		if data, err := ioutil.ReadAll(rc); err == nil {
+			if err := yaml.UnmarshalStrict(data, self); err == nil {
+				self.Name = name
+
+				if strings.TrimSpace(self.Name) == `` {
+					self.Name = strings.TrimSuffix(filepath.Base(srcfile), filepath.Ext(srcfile))
+				}
+
+				return nil
+			} else {
+				return fmt.Errorf("parse: %v", err)
+			}
+		} else {
+			return fmt.Errorf("read: %v", err)
+		}
+	} else {
+		return err
+	}
+}
+
+func (self *Module) Fetch() error {
+	self.Source = strings.TrimSpace(self.Source)
 
 	if self.Source != `` {
 		self.clear()
 
-		if rc, err := fetch(self.Source); err == nil {
-			defer rc.Close()
-
-			if data, err := ioutil.ReadAll(rc); err == nil {
-				if err := yaml.Unmarshal(data, self); err == nil {
-					self.Name = name
-
-					if strings.TrimSpace(self.Name) == `` {
-						self.Name = strings.TrimSuffix(filepath.Base(self.Source), filepath.Ext(self.Source))
-					}
-
-					return nil
-				} else {
-					return fmt.Errorf("parse: %v", err)
-				}
-			} else {
-				return fmt.Errorf("read: %v", err)
+		if fileutil.DirExists(self.Source) {
+			if strings.TrimSpace(self.Name) == `` {
+				self.Name = filepath.Base(self.Source)
 			}
-		} else {
-			return err
+
+			return filepath.Walk(self.Source, func(path string, info os.FileInfo, err error) error {
+				if err == nil {
+					return self.appendFile(path, info)
+				}
+
+				return nil
+			})
+		} else if strings.ContainsAny(self.Source, `*?[]`) { // looks like a glob, treat it as such
+			if entries, err := filepath.Glob(self.Source); err == nil {
+				for _, entry := range entries {
+					if err := self.appendFile(entry, nil); err != nil {
+						return err
+					}
+				}
+
+				return nil
+			}
 		}
+
+		return self.fetchAt(self.Source)
 	} else {
 		return nil
 	}
+}
+
+func (self *Module) appendFile(path string, info os.FileInfo) error {
+	if info == nil {
+		if s, err := os.Stat(path); err == nil {
+			info = s
+		} else {
+			return err
+		}
+	}
+
+	if !info.IsDir() {
+		if info.Size() > 0 {
+			switch ext := strings.ToLower(filepath.Ext(path)); ext {
+			case `.yaml`, `.yml`:
+				submodule := &Module{
+					Source: path,
+				}
+
+				if err := submodule.Fetch(); err == nil {
+					self.Modules = append(self.Modules, submodule)
+				} else {
+					return err
+				}
+			default:
+				self.Assets = append(self.Assets, Asset{
+					Source: path,
+				})
+			}
+		}
+	}
+
+	return nil
 }
 
 // This function retrieves external assets for this module and all submodules recursively
 // and writes them to disk.
 func (self *Module) WriteAssets(outdir string) error {
 	for _, asset := range self.Assets {
-		if asset.Name == `` {
-			asset.Name = filepath.Base(asset.Source)
-		}
+		asset.Name = asset.RelativePath()
 
 		tgt := filepath.Join(outdir, asset.Name)
 		tgt = env(tgt)
@@ -119,20 +181,26 @@ func (self *Module) WriteModules(outdir string) error {
 		tgt := env(filepath.Join(outdir, self.Name+`.qml`))
 
 		if err := os.MkdirAll(filepath.Dir(tgt), 0755); err == nil {
-			if out, err := os.Create(tgt); err == nil {
-				defer out.Close()
+			if defn := self.Definition; defn != nil {
+				log.Debugf("Generating %q", tgt)
 
-				for _, imp := range self.Imports {
-					if stmt, err := toImportStatement(imp); err == nil {
-						out.WriteString(stmt + "\n")
-					} else {
-						return fmt.Errorf("module %q: import %s: %s", self.Name, imp, err)
+				if out, err := os.Create(tgt); err == nil {
+					defer out.Close()
+
+					if self.Singleton {
+						out.WriteString("pragma Singleton\n")
 					}
-				}
 
-				out.WriteString(fmt.Sprintf("import %q\n", `.`))
+					for _, imp := range self.Imports {
+						if stmt, err := toImportStatement(imp); err == nil {
+							out.WriteString(stmt + "\n")
+						} else {
+							return fmt.Errorf("module %q: import %s: %s", self.Name, imp, err)
+						}
+					}
 
-				if defn := self.Definition; defn != nil {
+					out.WriteString(fmt.Sprintf("import %q\n", `.`))
+
 					if data, err := defn.QML(0); err == nil {
 						if _, err := out.Write(data); err != nil {
 							return fmt.Errorf("module %q: write error %v", self.Name, err)
@@ -143,10 +211,8 @@ func (self *Module) WriteModules(outdir string) error {
 						return err
 					}
 				} else {
-					return fmt.Errorf("module %q: must provide a definition", self.Name)
+					return fmt.Errorf("write module %v: %s", self.Name, err)
 				}
-			} else {
-				return fmt.Errorf("write module %v: %s", self.Name, err)
 			}
 		} else {
 			return fmt.Errorf("write module %v: %s", self.Name, err)

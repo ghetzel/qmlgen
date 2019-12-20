@@ -1,7 +1,6 @@
 package hydra
 
 import (
-	"bufio"
 	"bytes"
 	"fmt"
 	"io"
@@ -9,9 +8,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/ghetzel/go-stockutil/executil"
 	"github.com/ghetzel/go-stockutil/fileutil"
@@ -43,6 +42,8 @@ func FromReader(reader io.Reader) (*Application, error) {
 		var app Application
 
 		if err := yaml.UnmarshalStrict(data, &app); err == nil {
+			app.Name = strings.TrimSuffix(filepath.Base(Endpoint), filepath.Ext(Endpoint))
+
 			return &app, nil
 		} else {
 			return nil, fmt.Errorf("parse: %v", err)
@@ -167,6 +168,9 @@ func Load(locations ...string) (*Application, error) {
 func (self *Application) QML() ([]byte, error) {
 	var out bytes.Buffer
 
+	// add standard library functions
+	self.Modules = append(self.getBuiltinModules(), self.Modules...)
+
 	// process all top-level import statements
 	for _, imp := range self.Imports {
 		if stmt, err := toImportStatement(imp); err == nil {
@@ -206,64 +210,20 @@ func (self *Application) QML() ([]byte, error) {
 }
 
 func (self *Application) WriteModuleManifest() error {
-	if qmldir, err := os.Create(filepath.Join(self.OutputDir, `qmldir`)); err == nil {
-		defer qmldir.Close()
-
-		if qmlfiles, err := filepath.Glob(filepath.Join(self.OutputDir, `*.qml`)); err == nil {
-			w := bufio.NewWriter(qmldir)
-
-			if _, err := w.WriteString("module Application\n"); err != nil {
-				return err
+	if err := filepath.Walk(self.OutputDir, func(path string, info os.FileInfo, err error) error {
+		if err == nil {
+			if info.IsDir() {
+				return writeQmldir(path, ``)
+			} else {
+				return nil
 			}
-
-			sort.Strings(qmlfiles)
-
-			var singletons []string
-			var modules []string
-
-			for _, qmlfile := range qmlfiles {
-				if lines, err := fileutil.ReadAllLines(qmlfile); err == nil {
-					var singleton bool
-					var version string = `1.0`
-					var path string = strings.TrimPrefix(qmlfile, self.OutputDir+`/`)
-					var base string = strings.TrimSuffix(filepath.Base(qmlfile), filepath.Ext(qmlfile))
-
-					if base == `` {
-						continue
-					}
-
-				LineLoop:
-					for _, line := range lines {
-						if rxutil.Match(`^\s*pragma\s+Singleton\s*$`, line) != nil {
-							singleton = true
-							break LineLoop
-						}
-					}
-
-					if singleton {
-						singletons = append(singletons, `singleton `+base+` `+version+` `+path)
-					} else {
-						modules = append(modules, base+` `+version+` `+path)
-					}
-				} else {
-					return fmt.Errorf("read %s: %v", qmlfile, err)
-				}
-			}
-
-			if _, err := w.WriteString(strings.Join(singletons, "\n") + "\n\n"); err != nil {
-				return fmt.Errorf("bad write: %v", err)
-			}
-
-			if _, err := w.WriteString(strings.Join(modules, "\n") + "\n"); err != nil {
-				return fmt.Errorf("bad write: %v", err)
-			}
-
-			return w.Flush()
 		} else {
-			return fmt.Errorf("glob: %v", err)
+			return err
 		}
+	}); err == nil {
+		return writeQmldir(self.OutputDir, `Application`)
 	} else {
-		return fmt.Errorf("qmldir: %v", err)
+		return err
 	}
 }
 
@@ -272,6 +232,65 @@ func (self *Application) String() string {
 		return string(data)
 	} else {
 		return ``
+	}
+}
+
+func (self *Application) getBuiltinModules() []*Module {
+	return []*Module{
+		{
+			Name:      `Hydra`,
+			Singleton: true,
+			Imports: []string{
+				`QtQuick 2.0`,
+			},
+			Definition: &Component{
+				Type: `Item`,
+				ID:   `hydra`,
+				Public: []*Property{
+					{
+						Type:  `Component`,
+						Name:  `paths`,
+						Value: Literal(`i_paths`),
+					},
+				},
+				Components: []*Component{
+					{
+						Type: `Item`,
+						ID:   `i_paths`,
+						Functions: []Function{
+							{
+								Name:       `basename`,
+								Arguments:  []string{`path`},
+								Definition: `return path.replace(/\\/g,'/').replace( /.*\//, '')`,
+							}, {
+								Name:       `dirname`,
+								Arguments:  []string{`path`},
+								Definition: `return path.replace(/\\/g, '/').replace(/\/?[^\/]*$/, '')`,
+							},
+						},
+					},
+				},
+				Functions: []Function{
+					{
+						Name:       `vw`,
+						Arguments:  []string{`pct`, `parent`},
+						Definition: `return (parent || root).width * parseFloat(pct / 100.0);`,
+					}, {
+						Name:       `vh`,
+						Arguments:  []string{`pct`, `parent`},
+						Definition: `return (parent || root).height * parseFloat(pct / 100.0);`,
+					}, {
+						Name:       `vmin`,
+						Arguments:  []string{`pct`, `parent`},
+						Definition: `return Math.min(vw(pct, parent), vh(pct, parent));`,
+					}, {
+						Name:       `vmax`,
+						Arguments:  []string{`pct`, `parent`},
+						Definition: `return Math.max(vw(pct, parent), vh(pct, parent));`,
+					},
+				},
+			},
+		},
 	}
 }
 
@@ -296,9 +315,16 @@ func toImportStatement(imp string) (string, error) {
 	case 1: // no version specified, assume to be a local import
 		if alias != `` {
 			return fmt.Sprintf("import %q as %s", lib, alias), nil
-		} else {
+		} else if strings.ToLower(filepath.Ext(lib)) == `.js` { // script imports require an alias (qualifier)
 			alias = strings.TrimSuffix(filepath.Base(lib), filepath.Ext(lib))
+
+			if unicode.IsLower(rune(alias[0])) {
+				alias = stringutil.Camelize(alias)
+			}
+
 			return fmt.Sprintf("import %q as %s", lib, alias), nil
+		} else {
+			return fmt.Sprintf("import %q", lib), nil
 		}
 	default: // version specified, import from QML_IMPORT_PATH
 		version := parts[1]

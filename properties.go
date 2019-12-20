@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 
+	"github.com/ghetzel/go-stockutil/executil"
 	"github.com/ghetzel/go-stockutil/maputil"
 	"github.com/ghetzel/go-stockutil/sliceutil"
 	"github.com/ghetzel/go-stockutil/typeutil"
@@ -23,6 +24,7 @@ type Property struct {
 	Type     string      `yaml:"type,omitempty"     json:"type,omitempty"`
 	Name     string      `yaml:"name,omitempty"     json:"name,omitempty"`
 	Value    interface{} `yaml:"value,omitempty"    json:"value,omitempty"`
+	EnvVar   string      `yaml:"env,omitempty"      json:"env,omitempty"`
 	ReadOnly bool        `yaml:"readonly,omitempty" json:"readonly,omitempty"`
 	expose   bool
 }
@@ -75,7 +77,19 @@ func (self Property) QML() ([]byte, error) {
 			return nil, fmt.Errorf("bad inline: %v", err)
 		}
 	} else if self.Value != nil {
-		out.WriteString(`: ` + qmlvalue(self.Value))
+		var envOverride interface{}
+
+		if self.EnvVar != `` {
+			if v := executil.Env(self.EnvVar); v != `` {
+				envOverride = typeutil.Auto(v)
+			}
+		}
+
+		if envOverride == nil {
+			out.WriteString(`: ` + qmlvalue(self.Value))
+		} else {
+			out.WriteString(`: ` + qmlvalue(envOverride))
+		}
 	}
 
 	return out.Bytes(), nil
