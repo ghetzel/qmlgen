@@ -25,6 +25,7 @@ type Component struct {
 	Functions  []Function             `yaml:"functions,omitempty"  json:"functions,omitempty"`
 	Components []*Component           `yaml:"components,omitempty" json:"components,omitempty"`
 	Layout     *Layout                `yaml:"layout,omitempty"     json:"layout,omitempty"`
+	Fill       interface{}            `yaml:"fill,omitempty"     json:"fill,omitempty"`
 	Signals    []*Signal              `yaml:"signals,omitempty"    json:"signals,omitempty"`
 	private    Properties
 }
@@ -132,15 +133,11 @@ func (self *Component) QML(depth int) ([]byte, error) {
 }
 
 func (self *Component) applyLayoutProperties() {
+	var fill string
+
 	if layout := self.Layout; layout != nil {
 		// handle fill
-		fill := typeutil.String(layout.Fill)
-
-		if strings.HasPrefix(fill, `@`) {
-			self.Set(`anchors.fill`, `{`+strings.TrimPrefix(fill, `@`)+`}`)
-		} else if typeutil.Bool(fill) {
-			self.Set(`anchors.fill`, `{parent}`)
-		}
+		fill = typeutil.String(layout.Fill)
 
 		hc := layout.HorizontalCenter
 		vc := layout.VerticalCenter
@@ -161,6 +158,16 @@ func (self *Component) applyLayoutProperties() {
 			} else if typeutil.Bool(vc) {
 				self.Set(`anchors.verticalCenter`, `{parent.verticalCenter}`)
 			}
+		}
+	} else {
+		fill = typeutil.String(self.Fill)
+	}
+
+	if fill != `` {
+		if strings.HasPrefix(fill, `@`) {
+			self.Set(`anchors.fill`, `{`+strings.TrimPrefix(fill, `@`)+`}`)
+		} else if typeutil.Bool(fill) {
+			self.Set(`anchors.fill`, `{parent}`)
 		}
 	}
 }

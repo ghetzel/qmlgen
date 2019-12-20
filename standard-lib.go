@@ -43,11 +43,11 @@ func (self *Application) getBuiltinModules() []*Module {
 					{
 						Name:       `vw`,
 						Arguments:  []string{`pct`, `parent`},
-						Definition: `return (parent || root || Screen).width * parseFloat(pct / 100.0);`,
+						Definition: `return (parent || hydra.root || Screen).width * (parseFloat(pct) / 100.0);`,
 					}, {
 						Name:       `vh`,
 						Arguments:  []string{`pct`, `parent`},
-						Definition: `return (parent || root || Screen).height * parseFloat(pct / 100.0);`,
+						Definition: `return (parent || hydra.root || Screen).height * (parseFloat(pct) / 100.0);`,
 					}, {
 						Name:       `vmin`,
 						Arguments:  []string{`pct`, `parent`},

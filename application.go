@@ -16,6 +16,7 @@ import (
 	"github.com/ghetzel/go-stockutil/executil"
 	"github.com/ghetzel/go-stockutil/fileutil"
 	"github.com/ghetzel/go-stockutil/log"
+	"github.com/ghetzel/go-stockutil/maputil"
 	"github.com/ghetzel/go-stockutil/rxutil"
 	"github.com/ghetzel/go-stockutil/sliceutil"
 	"github.com/ghetzel/go-stockutil/stringutil"
@@ -174,9 +175,6 @@ func (self *Application) QML() ([]byte, error) {
 	// add standard library functions
 	self.Modules = append(self.getBuiltinModules(), self.Modules...)
 
-	// do some horrors to expose the top-level application item to the stdlib
-	self.Definition.Properties[`Component.onCompleted`] = Literal(`(Hydra.root = ` + self.Definition.ID + `)`)
-
 	// process all top-level import statements
 	for _, imp := range self.Imports {
 		if stmt, err := toImportStatement(imp); err == nil {
@@ -201,7 +199,12 @@ func (self *Application) QML() ([]byte, error) {
 	out.WriteString("\n")
 
 	if root := self.Definition; root != nil {
-		root.ID = `root`
+		if root.ID == `` {
+			root.ID = `root`
+		}
+
+		// do some horrors to expose the top-level application item to the stdlib
+		root.Properties[`Component.onCompleted`] = Literal(`(Hydra.root = ` + root.ID + `)`)
 
 		if data, err := root.QML(0); err == nil {
 			out.Write(data)
@@ -242,27 +245,18 @@ func (self *Application) String() string {
 }
 
 func (self *Application) GlobalImportPaths() (paths []string) {
-	filepath.Walk(self.OutputDir, func(path string, info os.FileInfo, err error) error {
-		if err == nil {
-			if !info.IsDir() {
-				if abs, err := filepath.Abs(path); err == nil {
-					if filepath.Base(path) == ModuleSpecFilename {
-						if spec, err := LoadModuleSpec(path); err == nil {
-							if spec.Global {
-								paths = append(paths, path)
-							}
-						} else {
-							return err
-						}
-					}
-				} else {
-					return err
-				}
-			}
-		}
+	modpaths := make(map[string]interface{})
 
-		return nil
-	})
+	for _, mod := range self.deepSubmodules() {
+		if spec := mod.spec; spec != nil && spec.Global {
+			dir := filepath.Dir(mod.AbsolutePath(self.OutputDir))
+			modpaths[dir] = true
+		}
+	}
+
+	for _, abs := range maputil.StringKeys(modpaths) {
+		paths = append(paths, abs)
+	}
 
 	sort.Strings(paths)
 	return

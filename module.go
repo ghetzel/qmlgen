@@ -45,7 +45,7 @@ type Module struct {
 	Modules    []*Module  `yaml:"modules,omitempty"    json:"modules,omitempty"`
 	Definition *Component `yaml:"definition,omitempty" json:"definition,omitempty"`
 	Singleton  bool       `yaml:"singleton,omitempty"  json:"singleton,omitempty"`
-	Global     bool       `yaml:"global,omitempty"     json:"global,omitempty"`
+	spec       *ModuleSpec
 }
 
 func (self *Module) clear() {
@@ -124,27 +124,29 @@ func (self *Module) appendFile(path string, info os.FileInfo) error {
 		}
 	}
 
-	if filepath.Base(path) == ModuleSpecFilename {
-		return nil
-	}
-
 	if !info.IsDir() {
 		if info.Size() > 0 {
-			switch ext := strings.ToLower(filepath.Ext(path)); ext {
-			case `.yaml`, `.yml`:
-				submodule := &Module{
-					Source: path,
-				}
+			if filepath.Base(path) == ModuleSpecFilename {
+				// we set this flag here because we may only get one shot at parsing this file (depending on
+				// where it comes from), so if we see a specfile, we parse it and set it
+				self.spec, _ = LoadModuleSpec(path)
+			} else {
+				switch ext := strings.ToLower(filepath.Ext(path)); ext {
+				case `.yaml`, `.yml`:
+					submodule := &Module{
+						Source: path,
+					}
 
-				if err := submodule.Fetch(); err == nil {
-					self.Modules = append(self.Modules, submodule)
-				} else {
-					return err
+					if err := submodule.Fetch(); err == nil {
+						self.Modules = append(self.Modules, submodule)
+					} else {
+						return err
+					}
+				default:
+					self.Assets = append(self.Assets, Asset{
+						Source: path,
+					})
 				}
-			default:
-				self.Assets = append(self.Assets, Asset{
-					Source: path,
-				})
 			}
 		}
 	}
@@ -234,11 +236,15 @@ func (self *Module) WriteModules(app *Application, outdir string) error {
 					defer out.Close()
 
 					if self.Singleton {
+						log.Debugf("  singleton: true")
 						out.WriteString("pragma Singleton\n")
 					}
 
+					log.Debugf("  imports:")
+
 					for _, imp := range self.Imports {
 						if stmt, err := toImportStatement(imp); err == nil {
+							log.Debugf("    %s", stmt)
 							out.WriteString(stmt + "\n")
 						} else {
 							return fmt.Errorf("module %q: import %s: %s", self.Name, imp, err)
@@ -247,19 +253,41 @@ func (self *Module) WriteModules(app *Application, outdir string) error {
 
 					// add paths that are supposed to be exposed to every module
 					for _, abs := range app.GlobalImportPaths() {
-						if rel, err := filepath.Rel(tgt, abs); err == nil {
+						if rel, err := filepath.Rel(filepath.Dir(tgt), abs); err == nil {
 							if stmt, err := toImportStatement(rel); err == nil {
+								log.Debugf("    %s", stmt)
 								out.WriteString(stmt + "\n")
 							} else {
-								return fmt.Errorf("module %q: import %s: %s", self.Name, imp, err)
+								return fmt.Errorf("module %q: import %s: %s", self.Name, rel, err)
 							}
 						} else {
-							log.Warningf("could not find relative from %q to %q: %v", tgt, globalModPath, err)
+							log.Warningf("could not find relative from %q to %q: %v", tgt, abs, err)
 						}
 					}
 
 					// import the current directory
+					log.Debugf("    import %q", `.`)
 					out.WriteString(fmt.Sprintf("import %q\n", `.`))
+
+					log.Debugf("  type: %v", defn.Type)
+					log.Debugf("  signals:")
+					for _, sig := range defn.Signals {
+						v, _ := sig.QML()
+						log.Debugf("    %s", string(v))
+					}
+
+					if len(defn.Public) > 0 {
+						log.Debugf("  publics:    %d", len(defn.Public))
+					}
+					if len(defn.Functions) > 0 {
+						log.Debugf("  functions:  %d", len(defn.Functions))
+					}
+					if len(defn.Properties) > 0 {
+						log.Debugf("  properties: %d", len(defn.Properties))
+					}
+					if len(defn.Components) > 0 {
+						log.Debugf("  components: %d", len(defn.Components))
+					}
 
 					if data, err := defn.QML(0); err == nil {
 						if _, err := out.Write(data); err != nil {
