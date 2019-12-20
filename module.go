@@ -6,14 +6,36 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/ghetzel/go-stockutil/fileutil"
 	"github.com/ghetzel/go-stockutil/log"
-	"github.com/ghetzel/go-stockutil/maputil"
 	"gopkg.in/yaml.v2"
 )
+
+type ModuleSpec struct {
+	Global bool `yaml:"global" json:"global"`
+}
+
+func LoadModuleSpec(path string) (*ModuleSpec, error) {
+	if file, err := os.Open(path); err == nil {
+		defer file.Close()
+
+		if data, err := ioutil.ReadAll(file); err == nil {
+			spec := new(ModuleSpec)
+
+			if err := yaml.UnmarshalStrict(data, spec); err == nil {
+				return spec, nil
+			} else {
+				return nil, err
+			}
+		} else {
+			return nil, err
+		}
+	} else {
+		return nil, err
+	}
+}
 
 type Module struct {
 	Name       string     `yaml:"name,omitempty"       json:"name,omitempty"`
@@ -100,6 +122,10 @@ func (self *Module) appendFile(path string, info os.FileInfo) error {
 		} else {
 			return err
 		}
+	}
+
+	if filepath.Base(path) == ModuleSpecFilename {
+		return nil
 	}
 
 	if !info.IsDir() {
@@ -219,29 +245,16 @@ func (self *Module) WriteModules(app *Application, outdir string) error {
 						}
 					}
 
-					globalPathDirs := make(map[string]bool)
-
-					for _, gmod := range app.GlobalModules() {
-						if gmodPath := gmod.AbsolutePath(outdir); gmodPath != self.AbsolutePath(outdir) {
-							globalModPath := filepath.Dir(gmodPath)
-
-							if rel, err := filepath.Rel(tgt, globalModPath); err == nil {
-								globalPathDirs[rel] = true
+					// add paths that are supposed to be exposed to every module
+					for _, abs := range app.GlobalImportPaths() {
+						if rel, err := filepath.Rel(tgt, abs); err == nil {
+							if stmt, err := toImportStatement(rel); err == nil {
+								out.WriteString(stmt + "\n")
 							} else {
-								log.Warningf("could not find relative from %q to %q: %v", tgt, globalModPath, err)
+								return fmt.Errorf("module %q: import %s: %s", self.Name, imp, err)
 							}
-						}
-					}
-
-					// gather the import paths for all global modules and generate statements for them
-					globalImports := maputil.StringKeys(globalPathDirs)
-					sort.Strings(globalImports)
-
-					for _, imp := range globalImports {
-						if stmt, err := toImportStatement(imp); err == nil {
-							out.WriteString(stmt + "\n")
 						} else {
-							return fmt.Errorf("module %q: import %s: %s", self.Name, imp, err)
+							log.Warningf("could not find relative from %q to %q: %v", tgt, globalModPath, err)
 						}
 					}
 

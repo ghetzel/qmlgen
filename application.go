@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -20,6 +21,8 @@ import (
 	"github.com/ghetzel/go-stockutil/stringutil"
 	"gopkg.in/yaml.v2"
 )
+
+const ModuleSpecFilename string = `module.yaml`
 
 var Endpoint string = executil.Env(`HYDRA_ENDPOINT`, `app.yaml`)
 var Domain = executil.Env(`HYDRA_HOST`, `hydra.local`)
@@ -238,13 +241,30 @@ func (self *Application) String() string {
 	}
 }
 
-func (self *Application) GlobalModules() (modules []*Module) {
-	for _, mod := range self.deepSubmodules() {
-		if mod.Global {
-			modules = append(modules, mod)
+func (self *Application) GlobalImportPaths() (paths []string) {
+	filepath.Walk(self.OutputDir, func(path string, info os.FileInfo, err error) error {
+		if err == nil {
+			if !info.IsDir() {
+				if abs, err := filepath.Abs(path); err == nil {
+					if filepath.Base(path) == ModuleSpecFilename {
+						if spec, err := LoadModuleSpec(path); err == nil {
+							if spec.Global {
+								paths = append(paths, path)
+							}
+						} else {
+							return err
+						}
+					}
+				} else {
+					return err
+				}
+			}
 		}
-	}
 
+		return nil
+	})
+
+	sort.Strings(paths)
 	return
 }
 
