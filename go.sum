@@ -53,8 +53,8 @@ github.com/ghetzel/cli v1.17.0/go.mod h1:Q+8sg5kp2RtKNJH7orf5ntfal6ol+XPGCYyRd5d
 github.com/ghetzel/diecast v0.0.0-20180404162638-0eeab4621f46/go.mod h1:swOXR3uO0wnxwnxOkB5L9tavFkSAMLGZdXYYkkvZRks=
 github.com/ghetzel/diecast v1.9.15/go.mod h1:XQ2W1E2vb9H5n0fagF7Ti4AiAVmqq8E3DoNVziO6k5c=
 github.com/ghetzel/diecast v1.13.10/go.mod h1:h9Mri+vMxBaCfK1J241NLCOWFi0uf7MWHN4v7C68Ylg=
-github.com/ghetzel/diecast v1.15.1 h1:ApEneOEcjl8sIUWnFYqOGb7sc1gcDPZiENNGbIpl1Ik=
-github.com/ghetzel/diecast v1.15.1/go.mod h1:b8jZRJMGt8/srGfsi4sa0QAeF0E4depIekKs8hNl6Mg=
+github.com/ghetzel/diecast v1.15.3 h1:FkuFndIH06Ek4vJJwPtVdg8/fhpwFWNKRQZM/K02IOM=
+github.com/ghetzel/diecast v1.15.3/go.mod h1:zMM3fzZxv8+uVRxMILR77lky4axTOWH+te1M62VhtlM=
 github.com/ghetzel/friendscript v0.5.0/go.mod h1:GZJ2FZRpgvURp4hUb/AdevNCnHKCWRpKLxtAl817F4g=
 github.com/ghetzel/friendscript v0.5.5/go.mod h1:zYqGAS3vGMxM912/T9GP1S62VP+AXssMDv9dPzO0Ph0=
 github.com/ghetzel/friendscript v0.6.6 h1:jpi8zy2luueXYmEJg1sKUtzNW1Cjk4FvQ8QXuGLRaUE=
@@ -65,10 +65,6 @@ github.com/ghetzel/go-stockutil v1.5.49/go.mod h1:Y2IAZKZNEGeZZD46Cwd94CoA1Oh+Bx
 github.com/ghetzel/go-stockutil v1.6.17/go.mod h1:+m7v45hx86ukaOof7faN1mFqW+PtmUbRwBG9Lt8ftEk=
 github.com/ghetzel/go-stockutil v1.8.3/go.mod h1:zHk/p1VcoQbWngvmelsQbFbZ6eIQDA4D3ryZPYLoZ1I=
 github.com/ghetzel/go-stockutil v1.8.4/go.mod h1:tq1ycYqlC1z9ZX/Pvgz+sePJvpHsJbd692w8936ed+U=
-github.com/ghetzel/go-stockutil v1.8.15 h1:EiRjJYIjH7G7XYaBxYaAcP7VgbHCeMSAQrIeahwgBlQ=
-github.com/ghetzel/go-stockutil v1.8.15/go.mod h1:b7mmPNCNKPkZIiK0eexQUwhUeCy72KOJK14k4NaJb5g=
-github.com/ghetzel/go-stockutil v1.8.16 h1:8fMKVCjf7rGRCkVv89jUiqertekglx0/qXFxaiSX89o=
-github.com/ghetzel/go-stockutil v1.8.16/go.mod h1:b7mmPNCNKPkZIiK0eexQUwhUeCy72KOJK14k4NaJb5g=
 github.com/ghetzel/go-stockutil v1.8.17 h1:GAMuyDOVUUgMA9cCqHOIn2wUcdyKYIJ/XyQdn5A+F9o=
 github.com/ghetzel/go-stockutil v1.8.17/go.mod h1:b7mmPNCNKPkZIiK0eexQUwhUeCy72KOJK14k4NaJb5g=
 github.com/ghetzel/go-webfriend v0.9.23/go.mod h1:4tjKFGdCtac9eXJ8Hz48DSCoiwjhzynwFFiyhsLfMnI=

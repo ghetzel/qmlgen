@@ -67,7 +67,8 @@ func (self *Module) fetchAt(srcfile string) error {
 					self.Name = strings.TrimSuffix(filepath.Base(srcfile), filepath.Ext(srcfile))
 				}
 
-				return nil
+				specInSameDir := filepath.Join(filepath.Dir(srcfile), ModuleSpecFilename)
+				return self.appendFile(specInSameDir, nil)
 			} else {
 				return fmt.Errorf("parse: %v", err)
 			}
@@ -119,6 +120,8 @@ func (self *Module) appendFile(path string, info os.FileInfo) error {
 	if info == nil {
 		if s, err := os.Stat(path); err == nil {
 			info = s
+		} else if os.IsNotExist(err) {
+			return nil
 		} else {
 			return err
 		}

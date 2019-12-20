@@ -2,6 +2,7 @@
 
 GO111MODULE ?= on
 BIN         ?= bin/hydra-$(shell go env GOOS)-$(shell go env GOARCH)
+CGO_ENABLED ?= 0
 
 .PHONY: fmt deps test $(BIN)
 

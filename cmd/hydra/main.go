@@ -75,6 +75,10 @@ func main() {
 			Name:  `wait-for-network-address`,
 			Usage: `If given, this address will be tested for connectivity instead of the default gateway.`,
 		},
+		cli.StringFlag{
+			Name:  `containment-strategy, C`,
+			Usage: `Specify a containment method used to actually run the generated code.`,
+		},
 	}
 
 	app.Before = func(c *cli.Context) error {
@@ -96,6 +100,7 @@ func main() {
 					ServeRoot:             c.String(`server-root`),
 					BuildDir:              c.String(`output-dir`),
 					Entrypoint:            c.String(`entrypoint`),
+					ContainmentStrategy:   hydra.RunContainmentFromString(c.String(`containment-strategy`)),
 				}))
 			} else {
 				log.FatalIf(hydra.Generate(

@@ -16,8 +16,8 @@ func (self Argument) String() string {
 }
 
 type Signal struct {
-	Name      string     `json:"name"`
-	Arguments []Argument `json:"args"`
+	Name      string     `yaml:"name" json:"name"`
+	Arguments []Argument `yaml:"args" json:"args"`
 }
 
 func (self *Signal) QML() ([]byte, error) {
