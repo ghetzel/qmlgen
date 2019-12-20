@@ -3,9 +3,6 @@ package hydra
 import (
 	"fmt"
 	"io"
-	"net/url"
-	"path/filepath"
-	"strings"
 )
 
 type Asset struct {
@@ -23,18 +20,5 @@ func (self *Asset) Retrieve() (io.ReadCloser, error) {
 }
 
 func (self *Asset) RelativePath() string {
-	if strings.Contains(self.Source, `://`) {
-		if u, err := url.Parse(self.Source); err == nil {
-			switch u.Scheme {
-			case `file`, ``:
-				return filepath.Join(u.Hostname(), u.Path)
-			default:
-				return strings.TrimPrefix(u.Path, `/`)
-			}
-		} else {
-			panic(fmt.Sprintf("asset: bad url %q: %v", self.Source, err))
-		}
-	} else {
-		return self.Source
-	}
+	return relativePathFromSource(self.Source)
 }

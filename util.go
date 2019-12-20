@@ -135,19 +135,19 @@ func qmlstring(value interface{}) string {
 		return strings.TrimSpace(stringutil.Unwrap(s, `{`, `}`))
 	} else if strings.HasSuffix(s, `vmin`) {
 		f := typeutil.Float(strings.TrimSuffix(s, `vmin`)) / 100.0
-		return fmt.Sprintf("((root.height < root.width) ? (root.height * %f) : (root.width * %f))", f, f)
+		return fmt.Sprintf("((Hydra.root.height < Hydra.root.width) ? (Hydra.root.height * %f) : (Hydra.root.width * %f))", f, f)
 
 	} else if strings.HasSuffix(s, `vmax`) {
 		f := typeutil.Float(strings.TrimSuffix(s, `vmax`)) / 100.0
-		return fmt.Sprintf("((root.height > root.width) ? (root.height * %f) : (root.width * %f))", f, f)
+		return fmt.Sprintf("((Hydra.root.height > Hydra.root.width) ? (Hydra.root.height * %f) : (Hydra.root.width * %f))", f, f)
 
 	} else if strings.HasSuffix(s, `vw`) {
 		f := typeutil.Float(strings.TrimSuffix(s, `vw`)) / 100.0
-		return fmt.Sprintf("(root.width * %f)", f)
+		return fmt.Sprintf("(Hydra.root.width * %f)", f)
 
 	} else if strings.HasSuffix(s, `vh`) {
 		f := typeutil.Float(strings.TrimSuffix(s, `vh`)) / 100.0
-		return fmt.Sprintf("(root.height * %f)", f)
+		return fmt.Sprintf("(Hydra.root.height * %f)", f)
 
 	} else if strings.HasSuffix(s, `pw`) {
 		f := typeutil.Float(strings.TrimSuffix(s, `pw`)) / 100.0
@@ -283,5 +283,22 @@ func writeQmldir(outdir string, modname string) error {
 		}
 	} else {
 		return fmt.Errorf("qmldir: %v", err)
+	}
+}
+
+func relativePathFromSource(source string) string {
+	if strings.Contains(source, `://`) {
+		if u, err := url.Parse(source); err == nil {
+			switch u.Scheme {
+			case `file`, ``:
+				return filepath.Join(u.Hostname(), u.Path)
+			default:
+				return strings.TrimPrefix(u.Path, `/`)
+			}
+		} else {
+			panic(fmt.Sprintf("asset: bad url %q: %v", source, err))
+		}
+	} else {
+		return source
 	}
 }

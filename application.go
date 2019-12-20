@@ -171,6 +171,9 @@ func (self *Application) QML() ([]byte, error) {
 	// add standard library functions
 	self.Modules = append(self.getBuiltinModules(), self.Modules...)
 
+	// do some horrors to expose the top-level application item to the stdlib
+	self.Definition.Properties[`Component.onCompleted`] = Literal(`(Hydra.root = ` + self.Definition.ID + `)`)
+
 	// process all top-level import statements
 	for _, imp := range self.Imports {
 		if stmt, err := toImportStatement(imp); err == nil {
@@ -181,7 +184,7 @@ func (self *Application) QML() ([]byte, error) {
 	}
 
 	// retrieve and write out all modules
-	if err := self.WriteModules(self.OutputDir); err == nil {
+	if err := self.WriteModules(self, self.OutputDir); err == nil {
 		out.WriteString(fmt.Sprintf("import %q\n", `.`))
 	} else {
 		return nil, err
@@ -235,63 +238,14 @@ func (self *Application) String() string {
 	}
 }
 
-func (self *Application) getBuiltinModules() []*Module {
-	return []*Module{
-		{
-			Name:      `Hydra`,
-			Singleton: true,
-			Imports: []string{
-				`QtQuick 2.0`,
-			},
-			Definition: &Component{
-				Type: `Item`,
-				ID:   `hydra`,
-				Public: []*Property{
-					{
-						Type:  `Component`,
-						Name:  `paths`,
-						Value: Literal(`i_paths`),
-					},
-				},
-				Components: []*Component{
-					{
-						Type: `Item`,
-						ID:   `i_paths`,
-						Functions: []Function{
-							{
-								Name:       `basename`,
-								Arguments:  []string{`path`},
-								Definition: `return path.replace(/\\/g,'/').replace( /.*\//, '')`,
-							}, {
-								Name:       `dirname`,
-								Arguments:  []string{`path`},
-								Definition: `return path.replace(/\\/g, '/').replace(/\/?[^\/]*$/, '')`,
-							},
-						},
-					},
-				},
-				Functions: []Function{
-					{
-						Name:       `vw`,
-						Arguments:  []string{`pct`, `parent`},
-						Definition: `return (parent || root).width * parseFloat(pct / 100.0);`,
-					}, {
-						Name:       `vh`,
-						Arguments:  []string{`pct`, `parent`},
-						Definition: `return (parent || root).height * parseFloat(pct / 100.0);`,
-					}, {
-						Name:       `vmin`,
-						Arguments:  []string{`pct`, `parent`},
-						Definition: `return Math.min(vw(pct, parent), vh(pct, parent));`,
-					}, {
-						Name:       `vmax`,
-						Arguments:  []string{`pct`, `parent`},
-						Definition: `return Math.max(vw(pct, parent), vh(pct, parent));`,
-					},
-				},
-			},
-		},
+func (self *Application) GlobalModules() (modules []*Module) {
+	for _, mod := range self.deepSubmodules() {
+		if mod.Global {
+			modules = append(modules, mod)
+		}
 	}
+
+	return
 }
 
 // generates a syntactically-correct QML import statement from a string.

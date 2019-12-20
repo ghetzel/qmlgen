@@ -6,10 +6,12 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/ghetzel/go-stockutil/fileutil"
 	"github.com/ghetzel/go-stockutil/log"
+	"github.com/ghetzel/go-stockutil/maputil"
 	"gopkg.in/yaml.v2"
 )
 
@@ -21,6 +23,7 @@ type Module struct {
 	Modules    []*Module  `yaml:"modules,omitempty"    json:"modules,omitempty"`
 	Definition *Component `yaml:"definition,omitempty" json:"definition,omitempty"`
 	Singleton  bool       `yaml:"singleton,omitempty"  json:"singleton,omitempty"`
+	Global     bool       `yaml:"global,omitempty"     json:"global,omitempty"`
 }
 
 func (self *Module) clear() {
@@ -173,12 +176,29 @@ func (self *Module) WriteAssets(outdir string) error {
 	return nil
 }
 
+func (self *Module) RelativePath() string {
+	if self.Source != `` {
+		return relativePathFromSource(self.Source)
+	} else {
+		return self.Name + `.yaml`
+	}
+}
+
+func (self *Module) AbsolutePath(outdir string) string {
+	abs := filepath.Join(outdir, self.RelativePath())
+	abs, _ = filepath.Abs(abs)
+
+	return abs
+}
+
 // This function writes inline modules out to files.  Modules can optionally be
 // sourced from a remote location, in which case this function will retrieve the
 // data from that location first.
-func (self *Module) WriteModules(outdir string) error {
+func (self *Module) WriteModules(app *Application, outdir string) error {
 	if err := self.Fetch(); err == nil {
-		tgt := env(filepath.Join(outdir, self.Name+`.qml`))
+		qmlfile := fileutil.SetExt(self.RelativePath(), `.qml`)
+		tgt := env(filepath.Join(outdir, qmlfile))
+		tgt, _ = filepath.Abs(tgt)
 
 		if err := os.MkdirAll(filepath.Dir(tgt), 0755); err == nil {
 			if defn := self.Definition; defn != nil {
@@ -199,6 +219,33 @@ func (self *Module) WriteModules(outdir string) error {
 						}
 					}
 
+					globalPathDirs := make(map[string]bool)
+
+					for _, gmod := range app.GlobalModules() {
+						if gmodPath := gmod.AbsolutePath(outdir); gmodPath != self.AbsolutePath(outdir) {
+							globalModPath := filepath.Dir(gmodPath)
+
+							if rel, err := filepath.Rel(tgt, globalModPath); err == nil {
+								globalPathDirs[rel] = true
+							} else {
+								log.Warningf("could not find relative from %q to %q: %v", tgt, globalModPath, err)
+							}
+						}
+					}
+
+					// gather the import paths for all global modules and generate statements for them
+					globalImports := maputil.StringKeys(globalPathDirs)
+					sort.Strings(globalImports)
+
+					for _, imp := range globalImports {
+						if stmt, err := toImportStatement(imp); err == nil {
+							out.WriteString(stmt + "\n")
+						} else {
+							return fmt.Errorf("module %q: import %s: %s", self.Name, imp, err)
+						}
+					}
+
+					// import the current directory
 					out.WriteString(fmt.Sprintf("import %q\n", `.`))
 
 					if data, err := defn.QML(0); err == nil {
@@ -223,11 +270,21 @@ func (self *Module) WriteModules(outdir string) error {
 
 	// write out submodules
 	for _, mod := range self.Modules {
-		if err := mod.WriteModules(outdir); err != nil {
+		if err := mod.WriteModules(app, outdir); err != nil {
 			return err
 		}
 	}
 
 	// all is well.
 	return nil
+}
+
+func (self *Module) deepSubmodules() (modules []*Module) {
+	modules = append(modules, self.Modules...)
+
+	for _, mod := range self.Modules {
+		modules = append(modules, mod.deepSubmodules()...)
+	}
+
+	return
 }

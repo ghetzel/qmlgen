@@ -78,7 +78,7 @@ func (self *Component) QML(depth int) ([]byte, error) {
 		self.applyLayoutProperties()
 
 		if self.ID != `` {
-			self.Set(`id`, self.ID)
+			self.Set(`id`, Literal(self.ID))
 		}
 
 		if self.HasContent() {
