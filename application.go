@@ -20,6 +20,7 @@ import (
 	"github.com/ghetzel/go-stockutil/rxutil"
 	"github.com/ghetzel/go-stockutil/sliceutil"
 	"github.com/ghetzel/go-stockutil/stringutil"
+	"github.com/ghetzel/go-stockutil/typeutil"
 	"gopkg.in/yaml.v2"
 )
 
@@ -204,7 +205,14 @@ func (self *Application) QML() ([]byte, error) {
 		}
 
 		// do some horrors to expose the top-level application item to the stdlib
-		root.Properties[`Component.onCompleted`] = Literal(`(Hydra.root = ` + root.ID + `)`)
+		var onCompleted string
+
+		if oc, ok := root.Properties[`Component.onCompleted`]; ok {
+			onCompleted = typeutil.String(oc) + "\n"
+		}
+
+		onCompleted = `Hydra.root = ` + root.ID + ";\n" + onCompleted
+		root.Properties[`Component.onCompleted`] = Literal(onCompleted)
 
 		if data, err := root.QML(0); err == nil {
 			out.Write(data)

@@ -105,6 +105,7 @@ func Generate(entrypoint string, app *Application) error {
 
 func RunWithOptions(app *Application, options RunOptions) error {
 	if err := options.Valid(); err == nil {
+		absBuildDir, _ := filepath.Abs(options.BuildDir)
 		entrypoint := filepath.Join(options.BuildDir, options.Entrypoint)
 
 		if err := Generate(entrypoint, app); err != nil {
@@ -192,20 +193,24 @@ func RunWithOptions(app *Application, options RunOptions) error {
 					}
 
 					os.Chmod(hydraXauth, 0755)
+
+					// driargs := getDriDockerArgs()
+
 					runner = cmd(``,
 						`docker`,
 						`run`,
 						`--rm`,
-						`--workdir`, `/build`,
-						`--volume`, options.BuildDir+`:/build`,
+						`--interactive`,
+						`--network`, `host`,
+						`--volume`, absBuildDir+`:/app`,
 						`--volume`, `/tmp/.X11-unix:/tmp/.X11-unix`,
 						`--volume`, hydraXauth+`:/Xauthority`,
+						`--volume`, `/dev:/dev`,
 						`--env`, `XAUTHORITY=/Xauthority`,
 						`--env`, `DISPLAY=`+xdisplay,
-						`--env`, `QT_QPA_PLATFORM_PLUGIN_PATH=/usr/lib/x86_64-linux-gnu/qt5/plugins/platforms`,
 						`--env`, `QT_QPA_PLATFORM=xcb`,
 						DockerContainerQt,
-						options.QmlsceneBin,
+						`qmlscene`,
 						qmlargs)
 				} else {
 					errchan <- fmt.Errorf("cannot contain using docker-xcb: no DISPLAY available")
@@ -246,4 +251,22 @@ func cmd(root string, name string, args ...interface{}) *executil.Cmd {
 	}
 
 	return c
+}
+
+func getDriDockerArgs() (paths []string) {
+	if entries, err := filepath.Glob(`/usr/lib/x86_64-linux-gnu/dri/*`); err == nil {
+		for _, entry := range entries {
+			if linkTo, err := filepath.EvalSymlinks(entry); err == nil {
+				paths = append(paths, `--volume`, linkTo+`:`+entry)
+			}
+		}
+	} else {
+		return
+	}
+
+	if fileutil.DirExists(`/dev/dri`) {
+		paths = append(paths, `--device`, `/dev/dri:/dev/dri:rw`)
+	}
+
+	return
 }
