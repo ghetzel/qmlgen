@@ -1,0 +1,32 @@
+---
+imports:
+  - QtQuick 2.11
+  - QtQuick.Layouts 1.11
+  - QtQuick.Controls 2.4
+  - QtQuick.Window 2.11
+  - QtMultimedia 5.11
+  - lib
+
+modules:
+  - source: lib
+
+definition:
+  type: ApplicationWindow
+  components:
+    - type: FitText
+      id: clock
+      layout:
+        center: true
+        vcenter: true
+      properties:
+        width: 50vw
+        height: 50vh
+
+    - type: Timer
+      properties:
+        interval: 1000
+        running: true
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: |
+          clock.text = Qt.formatTime(new Date(), "h:mm:ssap")
