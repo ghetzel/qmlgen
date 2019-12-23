@@ -28,6 +28,10 @@ func main() {
 			Value:  `build`,
 			EnvVar: `HYDRA_OUTPUT_DIR`,
 		},
+		cli.BoolFlag{
+			Name:  `preserve-dir, P`,
+			Usage: `Whether to preserve the existing output directory before generating new files.`,
+		},
 		cli.StringFlag{
 			Name:   `entrypoint`,
 			Usage:  `The name of the application QML in the output directory`,
@@ -90,6 +94,8 @@ func main() {
 		appcfg := c.Args().First()
 
 		if app, err := hydra.Load(appcfg); err == nil {
+			app.PreserveDir = c.Bool(`preserve-dir`)
+
 			if c.Bool(`run`) {
 				log.FatalIf(hydra.RunWithOptions(app, hydra.RunOptions{
 					QmlsceneBin:           c.String(`qml-runner`),

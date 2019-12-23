@@ -74,8 +74,10 @@ func Generate(entrypoint string, app *Application) error {
 	app.OutputDir = filepath.Dir(entrypoint)
 
 	// remove existing builddir
-	if err := os.RemoveAll(app.OutputDir); err != nil {
-		return err
+	if !app.PreserveDir {
+		if err := os.RemoveAll(app.OutputDir); err != nil {
+			return err
+		}
 	}
 
 	// create empty builddir

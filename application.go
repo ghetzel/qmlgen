@@ -36,9 +36,10 @@ var Client = &http.Client{
 }
 
 type Application struct {
-	Module    `yaml:",inline"`
-	OutputDir string `yaml:"-" json:"-"`
-	filename  string
+	Module      `yaml:",inline"`
+	OutputDir   string `yaml:"-" json:"-"`
+	PreserveDir bool
+	filename    string
 }
 
 // Loads an application from the given io.Reader data.
