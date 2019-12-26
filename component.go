@@ -14,6 +14,7 @@ type Layout struct {
 	Fill             interface{} `yaml:"fill,omitempty" json:"fill,omitempty"`
 	HorizontalCenter string      `yaml:"center"         json:"center"`
 	VerticalCenter   string      `yaml:"vcenter"        json:"vcenter"`
+	Flex             int         `yaml:"flex"           json:"flex"`
 }
 
 type Component struct {
@@ -25,7 +26,8 @@ type Component struct {
 	Functions  []Function             `yaml:"functions,omitempty"  json:"functions,omitempty"`
 	Components []*Component           `yaml:"components,omitempty" json:"components,omitempty"`
 	Layout     *Layout                `yaml:"layout,omitempty"     json:"layout,omitempty"`
-	Fill       interface{}            `yaml:"fill,omitempty"     json:"fill,omitempty"`
+	Fill       interface{}            `yaml:"fill,omitempty"       json:"fill,omitempty"`
+	Flex       int                    `yaml:"flex"                 json:"flex"`
 	Signals    []*Signal              `yaml:"signals,omitempty"    json:"signals,omitempty"`
 	private    Properties
 }
@@ -45,7 +47,7 @@ func (self *Component) Validate() error {
 }
 
 func (self *Component) String() string {
-	if data, err := self.QML(0); err == nil {
+	if data, err := self.QML(0, self); err == nil {
 		return string(data)
 	} else {
 		panic("generate: " + err.Error())
@@ -72,11 +74,15 @@ func (self *Component) HasContent() bool {
 	return false
 }
 
-func (self *Component) QML(depth int) ([]byte, error) {
+func (self *Component) QML(depth int, parent ...*Component) ([]byte, error) {
 	if err := self.Validate(); err == nil {
 		var out bytes.Buffer
 
-		self.applyLayoutProperties()
+		if len(parent) > 0 {
+			self.applyLayoutProperties(parent[0])
+		} else {
+			self.applyLayoutProperties(nil)
+		}
 
 		if self.ID != `` {
 			self.Set(`id`, Literal(self.ID))
@@ -115,7 +121,7 @@ func (self *Component) QML(depth int) ([]byte, error) {
 
 		// write out subcomponents (recursive)
 		for _, child := range self.Components {
-			if data, err := child.QML(depth + 1); err == nil {
+			if data, err := child.QML(depth+1, self); err == nil {
 				for _, line := range lines(data) {
 					out.WriteString(Indent + line + "\n")
 				}
@@ -132,10 +138,13 @@ func (self *Component) QML(depth int) ([]byte, error) {
 	}
 }
 
-func (self *Component) applyLayoutProperties() {
-	var fill string
+func (self *Component) applyLayoutProperties(parent *Component) {
+	layout := self.Layout
 
-	if layout := self.Layout; layout != nil {
+	var fill string
+	var flex int
+
+	if layout != nil {
 		// handle fill
 		fill = typeutil.String(layout.Fill)
 
@@ -159,8 +168,26 @@ func (self *Component) applyLayoutProperties() {
 				self.Set(`anchors.verticalCenter`, `{parent.verticalCenter}`)
 			}
 		}
+
+		if layout.Flex > 0 {
+			flex = layout.Flex
+		}
 	} else {
 		fill = typeutil.String(self.Fill)
+		flex = self.Flex
+	}
+
+	if flex > 0 && parent != nil {
+		switch parent.Type {
+		case `RowLayout`:
+			self.Set(`Layout.fillHeight`, true)
+			self.Set(`Layout.fillWidth`, true)
+			self.Set(`Layout.preferredWidth`, flex)
+		case `ColumnLayout`:
+			self.Set(`Layout.fillHeight`, true)
+			self.Set(`Layout.fillWidth`, true)
+			self.Set(`Layout.preferredHeight`, flex)
+		}
 	}
 
 	if fill != `` {

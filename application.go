@@ -215,7 +215,7 @@ func (self *Application) QML() ([]byte, error) {
 		onCompleted = `Hydra.root = ` + root.ID + ";\n" + onCompleted
 		root.Properties[`Component.onCompleted`] = Literal(onCompleted)
 
-		if data, err := root.QML(0); err == nil {
+		if data, err := root.QML(0, root); err == nil {
 			out.Write(data)
 
 			return out.Bytes(), nil
