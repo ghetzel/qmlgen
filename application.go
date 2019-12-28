@@ -42,6 +42,14 @@ type Application struct {
 	filename    string
 }
 
+func IsLoadErr(err error) bool {
+	if err != nil {
+		return strings.HasPrefix(err.Error(), `from-`)
+	}
+
+	return false
+}
+
 // Loads an application from the given io.Reader data.
 func FromReader(reader io.Reader) (*Application, error) {
 	if data, err := ioutil.ReadAll(reader); err == nil {
@@ -55,7 +63,7 @@ func FromReader(reader io.Reader) (*Application, error) {
 			return nil, fmt.Errorf("parse: %v", err)
 		}
 	} else {
-		return nil, fmt.Errorf("read: %v", err)
+		return nil, fmt.Errorf("from-read: %v", err)
 	}
 }
 
@@ -72,10 +80,10 @@ func FromFile(yamlFilename string) (*Application, error) {
 				return nil, err
 			}
 		} else {
-			return nil, fmt.Errorf("open: %v", err)
+			return nil, fmt.Errorf("from-open: %v", err)
 		}
 	} else {
-		return nil, fmt.Errorf("path: %v", err)
+		return nil, fmt.Errorf("from-path: %v", err)
 	}
 }
 
@@ -87,10 +95,10 @@ func FromURL(url string) (*Application, error) {
 		if res.StatusCode < 400 {
 			return FromReader(res.Body)
 		} else {
-			return nil, fmt.Errorf("http: %s", res.Status)
+			return nil, fmt.Errorf("from-http: %s", res.Status)
 		}
 	} else {
-		return nil, fmt.Errorf("http: %v", err)
+		return nil, fmt.Errorf("from-http: %v", err)
 	}
 }
 
@@ -153,17 +161,25 @@ func Load(locations ...string) (*Application, error) {
 	}
 
 	for _, location := range candidates {
+		var app *Application
+		var err error
 		scheme, _ := stringutil.SplitPair(location, `://`)
 		log.Debugf("Load: trying %s", location)
 
 		switch scheme {
 		case `https`, `http`:
-			if app, err := FromURL(location); err == nil {
-				return app, nil
-			}
+			app, err = FromURL(location)
 		default:
-			if app, err := FromFile(location); err == nil {
-				return app, nil
+			app, err = FromFile(location)
+		}
+
+		if err == nil {
+			return app, nil
+		} else {
+			if IsLoadErr(err) {
+				log.Debugf("      load error: %v", err)
+			} else {
+				return app, err
 			}
 		}
 	}
