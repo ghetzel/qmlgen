@@ -239,6 +239,7 @@ func RunWithOptions(app *Application, options RunOptions) error {
 
 func cmd(root string, name string, args ...interface{}) *executil.Cmd {
 	c := executil.Command(name, sliceutil.Stringify(sliceutil.Flatten(args))...)
+	c.InheritEnv = true
 	c.Dir = root
 	c.OnStdout = func(line string, _ bool) {
 		if line != `` {

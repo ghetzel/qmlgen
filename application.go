@@ -35,6 +35,13 @@ var Client = &http.Client{
 	Timeout: 10 * time.Second,
 }
 
+func init() {
+	os.Setenv(`HYDRA_ENDPOINT`, Endpoint)
+	os.Setenv(`HYDRA_HOST`, Domain)
+	os.Setenv(`HYDRA_ENV`, Environment)
+	os.Setenv(`HYDRA_ID`, ID)
+}
+
 type Application struct {
 	Module      `yaml:",inline"`
 	OutputDir   string `yaml:"-" json:"-"`
