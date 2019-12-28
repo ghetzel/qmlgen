@@ -211,6 +211,10 @@ func RunWithOptions(app *Application, options RunOptions) error {
 						`--env`, `XAUTHORITY=/Xauthority`,
 						`--env`, `DISPLAY=`+xdisplay,
 						`--env`, `QT_QPA_PLATFORM=xcb`,
+						`--env`, `HYDRA_ENDPOINT=`+Endpoint,
+						`--env`, `HYDRA_HOST=`+Domain,
+						`--env`, `HYDRA_ENV=`+Environment,
+						`--env`, `HYDRA_ID=`+ID,
 						DockerContainerQt,
 						`qmlscene`,
 						qmlargs)
