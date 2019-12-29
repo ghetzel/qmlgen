@@ -220,11 +220,15 @@ func writeQmldir(outdir string, modname string) error {
 		modname = stringutil.Camelize(filepath.Base(outdir))
 	}
 
-	if qmldir, err := os.Create(path); err == nil {
-		log.Debugf("qmldir: %s", path)
-		defer qmldir.Close()
+	if qmlfiles, err := filepath.Glob(filepath.Join(outdir, `*.qml`)); err == nil {
+		if len(qmlfiles) == 0 {
+			return nil
+		}
 
-		if qmlfiles, err := filepath.Glob(filepath.Join(outdir, `*.qml`)); err == nil {
+		if qmldir, err := os.Create(path); err == nil {
+			log.Debugf("qmldir: %s", path)
+			defer qmldir.Close()
+
 			w := bufio.NewWriter(qmldir)
 
 			if _, err := w.WriteString("module " + modname + "\n"); err != nil {
@@ -279,10 +283,10 @@ func writeQmldir(outdir string, modname string) error {
 
 			return w.Flush()
 		} else {
-			return fmt.Errorf("glob: %v", err)
+			return fmt.Errorf("qmldir: %v", err)
 		}
 	} else {
-		return fmt.Errorf("qmldir: %v", err)
+		return fmt.Errorf("glob: %v", err)
 	}
 }
 

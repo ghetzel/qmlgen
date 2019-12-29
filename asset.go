@@ -6,9 +6,8 @@ import (
 )
 
 type Asset struct {
-	Name     string `json:"name"`
-	Source   string `json:"source"`
-	Checksum string `json:"checksum,omitempty"`
+	Name   string `json:"name"`
+	Source string `json:"source"`
 }
 
 func (self *Asset) Retrieve() (io.ReadCloser, error) {

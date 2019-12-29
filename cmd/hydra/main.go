@@ -1,12 +1,15 @@
 package main
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 
 	"github.com/ghetzel/cli"
 	"github.com/ghetzel/go-stockutil/log"
+	"github.com/ghetzel/go-stockutil/sliceutil"
 	"github.com/ghetzel/hydra"
+	yaml "gopkg.in/yaml.v2"
 )
 
 func main() {
@@ -83,6 +86,10 @@ func main() {
 			Name:  `containment-strategy, C`,
 			Usage: `Specify a containment method used to actually run the generated code.`,
 		},
+		cli.StringFlag{
+			Name:  `manifest-root, m`,
+			Usage: `Specify a local path where manifest data will be stored.`,
+		},
 	}
 
 	app.Before = func(c *cli.Context) error {
@@ -90,10 +97,58 @@ func main() {
 		return nil
 	}
 
+	app.Commands = []cli.Command{
+		{
+			Name:  `generate`,
+			Usage: `Generate a portable application manifest from the given directory.`,
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  `output, o`,
+					Usage: `The name of the file to write the manifest to.`,
+					Value: hydra.ManifestFilename,
+				},
+			},
+			Action: func(c *cli.Context) {
+				from := sliceutil.OrString(c.Args().First(), `.`)
+
+				if manifest, err := hydra.CreateManifest(from); err == nil {
+					var w io.Writer
+
+					switch output := c.String(`output`); output {
+					case ``:
+						log.Fatalf("must specify an output destination")
+					case `-`:
+						w = os.Stdout
+					default:
+						if file, err := os.Create(output); err == nil {
+							defer file.Close()
+							w = file
+						} else {
+							log.Fatal(err)
+						}
+					}
+
+					log.FatalIf(yaml.NewEncoder(w).Encode(&hydra.Application{
+						Manifest: manifest,
+					}))
+				} else {
+					log.Fatal(err)
+				}
+
+			},
+		},
+	}
+
 	app.Action = func(c *cli.Context) {
 		appcfg := c.Args().First()
 
 		if app, err := hydra.Load(appcfg); err == nil {
+			if approot := c.String(`manifest-root`); approot != `` {
+				app.Root = approot
+			}
+
+			log.Debugf("Loaded app: root=%v", app.Root)
+
 			app.PreserveDir = c.Bool(`preserve-dir`)
 
 			if c.Bool(`run`) {

@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -26,7 +27,8 @@ import (
 
 const ModuleSpecFilename string = `module.yaml`
 
-var Endpoint string = executil.Env(`HYDRA_ENDPOINT`, `app.yaml`)
+var ManifestFilename string = `manifest.yaml`
+var Entrypoint string = executil.Env(`HYDRA_ENTRYPOINT`, `app.yaml`)
 var Domain = executil.Env(`HYDRA_HOST`, `hydra.local`)
 var Environment = executil.Env(`HYDRA_ENV`)
 var ID = executil.Env(`HYDRA_ID`)
@@ -36,7 +38,7 @@ var Client = &http.Client{
 }
 
 func init() {
-	os.Setenv(`HYDRA_ENDPOINT`, Endpoint)
+	os.Setenv(`HYDRA_ENTRYPOINT`, Entrypoint)
 	os.Setenv(`HYDRA_HOST`, Domain)
 	os.Setenv(`HYDRA_ENV`, Environment)
 	os.Setenv(`HYDRA_ID`, ID)
@@ -44,8 +46,10 @@ func init() {
 
 type Application struct {
 	Module      `yaml:",inline"`
-	OutputDir   string `yaml:"-" json:"-"`
-	PreserveDir bool
+	Root        string    `yaml:"-" json:"root"`
+	Manifest    *Manifest `yaml:"manifest,omitempty"`
+	OutputDir   string    `yaml:"-" json:"-"`
+	PreserveDir bool      `yaml:"-" json:"-"`
 	filename    string
 }
 
@@ -63,7 +67,7 @@ func FromReader(reader io.Reader) (*Application, error) {
 		var app Application
 
 		if err := yaml.UnmarshalStrict(data, &app); err == nil {
-			app.Name = strings.TrimSuffix(filepath.Base(Endpoint), filepath.Ext(Endpoint))
+			app.Name = strings.TrimSuffix(filepath.Base(Entrypoint), filepath.Ext(Entrypoint))
 
 			return &app, nil
 		} else {
@@ -82,6 +86,7 @@ func FromFile(yamlFilename string) (*Application, error) {
 
 			if app, err := FromReader(file); err == nil {
 				app.filename = yamlFilename
+				app.Root = filepath.Dir(yamlFilename)
 				return app, nil
 			} else {
 				return nil, err
@@ -95,17 +100,27 @@ func FromFile(yamlFilename string) (*Application, error) {
 }
 
 // Loads an application from the given URL.
-func FromURL(url string) (*Application, error) {
-	if res, err := Client.Get(url); err == nil {
-		defer res.Body.Close()
+func FromURL(manifestOrAppFileUrl string) (*Application, error) {
+	if u, err := url.Parse(manifestOrAppFileUrl); err == nil {
+		if res, err := Client.Get(u.String()); err == nil {
+			defer res.Body.Close()
 
-		if res.StatusCode < 400 {
-			return FromReader(res.Body)
+			if res.StatusCode < 400 {
+				if app, err := FromReader(res.Body); err == nil {
+					u.Path = filepath.Dir(u.Path)
+					app.Root = u.String()
+					return app, nil
+				} else {
+					return nil, err
+				}
+			} else {
+				return nil, fmt.Errorf("from-http: %s", res.Status)
+			}
 		} else {
-			return nil, fmt.Errorf("from-http: %s", res.Status)
+			return nil, fmt.Errorf("from-http: %v", err)
 		}
 	} else {
-		return nil, fmt.Errorf("from-http: %v", err)
+		return nil, fmt.Errorf("from-url: %v", err)
 	}
 }
 
@@ -132,22 +147,22 @@ func Load(locations ...string) (*Application, error) {
 		hasEnv := (Environment != ``)
 
 		if hasEnv {
-			candidates = append(candidates, Environment+`.`+Endpoint)
+			candidates = append(candidates, Environment+`.`+Entrypoint)
 		}
 
-		candidates = append(candidates, Endpoint)
+		candidates = append(candidates, Entrypoint)
 
 		if hasEnv {
-			candidates = append(candidates, `~/.config/hydra/`+Environment+`.`+Endpoint)
+			candidates = append(candidates, `~/.config/hydra/`+Environment+`.`+Entrypoint)
 		}
 
-		candidates = append(candidates, `~/.config/hydra/`+Endpoint)
+		candidates = append(candidates, `~/.config/hydra/`+Entrypoint)
 
 		if hasEnv {
-			candidates = append(candidates, `/etc/hydra/`+Environment+`.`+Endpoint)
+			candidates = append(candidates, `/etc/hydra/`+Environment+`.`+Entrypoint)
 		}
 
-		candidates = append(candidates, `/etc/hydra/`+Endpoint)
+		candidates = append(candidates, `/etc/hydra/`+Entrypoint)
 
 		for _, scheme := range []string{
 			`https`,
@@ -157,7 +172,7 @@ func Load(locations ...string) (*Application, error) {
 				"%s://%s/%s?env=%s&id=%s&host=%s",
 				scheme,
 				Domain,
-				Endpoint,
+				Entrypoint,
 				Environment,
 				ID,
 				Hostname,
@@ -210,14 +225,9 @@ func (self *Application) QML() ([]byte, error) {
 	}
 
 	// retrieve and write out all modules
-	if err := self.WriteModules(self, self.OutputDir); err == nil {
+	if err := self.writeModules(self, self.OutputDir); err == nil {
 		out.WriteString(fmt.Sprintf("import %q\n", `.`))
 	} else {
-		return nil, err
-	}
-
-	// retrieve and write out all assets
-	if err := self.WriteAssets(self.OutputDir); err != nil {
 		return nil, err
 	}
 
@@ -230,6 +240,10 @@ func (self *Application) QML() ([]byte, error) {
 
 		// do some horrors to expose the top-level application item to the stdlib
 		var onCompleted string
+
+		if root.Properties == nil {
+			root.Properties = make(map[string]interface{})
+		}
 
 		if oc, ok := root.Properties[`Component.onCompleted`]; ok {
 			onCompleted = typeutil.String(oc) + "\n"
@@ -250,7 +264,7 @@ func (self *Application) QML() ([]byte, error) {
 	}
 }
 
-func (self *Application) WriteModuleManifest() error {
+func (self *Application) WriteQmlManifest() error {
 	if err := filepath.Walk(self.OutputDir, func(path string, info os.FileInfo, err error) error {
 		if err == nil {
 			if info.IsDir() {

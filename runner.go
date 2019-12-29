@@ -13,6 +13,7 @@ import (
 	"github.com/ghetzel/go-stockutil/netutil"
 	"github.com/ghetzel/go-stockutil/sliceutil"
 	"github.com/ghetzel/go-stockutil/stringutil"
+	yaml "gopkg.in/yaml.v2"
 )
 
 var DockerContainerQt = executil.Env(`HYDRA_DOCKER_XCB`, `ghetzel/hydra`)
@@ -73,22 +74,69 @@ func Generate(entrypoint string, app *Application) error {
 
 	app.OutputDir = filepath.Dir(entrypoint)
 
-	// remove existing builddir
-	if !app.PreserveDir {
-		if err := os.RemoveAll(app.OutputDir); err != nil {
+	// if the application has a manifest, fetch its contents
+	if app.Manifest != nil {
+		if !app.PreserveDir {
+			if err := app.Manifest.Clean(app.OutputDir); err != nil {
+				return fmt.Errorf("cleanup: %v", err)
+			}
+		}
+
+		if err := app.Manifest.Fetch(app.Root, app.OutputDir); err == nil {
+			if entry := app.Manifest.GetEntrypoint(); entry != nil {
+				filename := filepath.Join(app.OutputDir, entry.Name)
+
+				if actualApp, err := FromFile(filename); err == nil {
+					actualApp.Root = app.OutputDir
+					actualApp.OutputDir = app.OutputDir
+
+					if modules, err := app.Manifest.LoadModules(app.OutputDir); err == nil {
+						actualApp.Modules = modules
+					} else {
+						return fmt.Errorf("load modules: %v", err)
+					}
+
+					if outManifest, err := os.Create(filepath.Join(actualApp.OutputDir, ManifestFilename)); err == nil {
+						defer outManifest.Close()
+
+						if err := yaml.NewEncoder(outManifest).Encode(&Application{
+							Manifest: app.Manifest,
+						}); err == nil {
+							outManifest.Close()
+						} else {
+							return fmt.Errorf("cannot dump manifest: %v", err)
+						}
+					} else {
+						return fmt.Errorf("cannot create manifest: %v", err)
+					}
+
+					log.Noticef("manifest switched entrypoint to: %s", filename)
+					app = actualApp
+				} else {
+					return fmt.Errorf("bad entrypoint %s: %v", filename, err)
+				}
+			}
+		} else {
+			return fmt.Errorf("fetch manifest: %v", err)
+		}
+	} else {
+		// remove existing builddir
+		if !app.PreserveDir {
+			if err := os.RemoveAll(app.OutputDir); err != nil {
+				return err
+			}
+		}
+
+		// create empty builddir
+		if err := os.MkdirAll(app.OutputDir, 0755); err != nil {
 			return err
 		}
-	}
-
-	// create empty builddir
-	if err := os.MkdirAll(app.OutputDir, 0755); err != nil {
-		return err
 	}
 
 	// generate top-level QML (also writes out all dependencies)
 	if qml, err := app.QML(); err == nil {
 		// generate qmldir file
-		if err := app.WriteModuleManifest(); err != nil {
+		if err := app.WriteQmlManifest(); err != nil {
 			return fmt.Errorf("manifest error: %v", err)
 		}
 
@@ -211,7 +259,7 @@ func RunWithOptions(app *Application, options RunOptions) error {
 						`--env`, `XAUTHORITY=/Xauthority`,
 						`--env`, `DISPLAY=`+xdisplay,
 						`--env`, `QT_QPA_PLATFORM=xcb`,
-						`--env`, `HYDRA_ENDPOINT=`+Endpoint,
+						`--env`, `HYDRA_ENTRYPOINT=`+Entrypoint,
 						`--env`, `HYDRA_HOST=`+Domain,
 						`--env`, `HYDRA_ENV=`+Environment,
 						`--env`, `HYDRA_ID=`+ID,
