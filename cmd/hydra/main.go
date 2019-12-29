@@ -27,7 +27,7 @@ func main() {
 		cli.StringFlag{
 			Name:   `output-dir, o`,
 			Usage:  `The output directory to write the QML to.`,
-			Value:  `build`,
+			Value:  hydra.DefaultOutputDirectory,
 			EnvVar: `HYDRA_OUTPUT_DIR`,
 		},
 		cli.StringFlag{
@@ -76,8 +76,8 @@ func main() {
 			Usage: `Specify a containment method used to actually run the generated code.`,
 		},
 		cli.StringFlag{
-			Name:  `manifest-root, m`,
-			Usage: `Specify a local path where manifest data will be stored.`,
+			Name:  `location, l`,
+			Usage: `Specify a source location path or URL where data should be retrieved from.`,
 		},
 	}
 
@@ -132,11 +132,11 @@ func main() {
 		appcfg := c.Args().First()
 
 		if app, err := hydra.Load(appcfg); err == nil {
-			if approot := c.String(`manifest-root`); approot != `` {
-				app.Root = approot
+			if srcloc := c.String(`location`); srcloc != `` {
+				app.SourceLocation = srcloc
 			}
 
-			log.Debugf("Loaded app: root=%v", app.Root)
+			log.Debugf("Loaded app: location=%v", app.SourceLocation)
 
 			log.FatalIf(app.Generate(c.String(`output-dir`)))
 

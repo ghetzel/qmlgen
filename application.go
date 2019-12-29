@@ -28,6 +28,7 @@ const EntrypointFilename string = `app.yaml`
 const ManifestFilename string = `manifest.yaml`
 const ModuleSpecFilename string = `module.yaml`
 
+var DefaultOutputDirectory = executil.Env(`HYDRA_OUTPUT_DIR`, `build`)
 var Domain = executil.Env(`HYDRA_HOST`, `hydra.local`)
 var Environment = executil.Env(`HYDRA_ENV`)
 var ID = executil.Env(`HYDRA_ID`)
@@ -43,10 +44,10 @@ func init() {
 }
 
 type Application struct {
-	Module   `yaml:",inline"`
-	Root     string    `yaml:"-" json:"root"`
-	Manifest *Manifest `yaml:"manifest,omitempty"`
-	filename string
+	Module         `yaml:",inline"`
+	SourceLocation string    `yaml:"location,omitempty" json:"location,omitempty"`
+	Manifest       *Manifest `yaml:"manifest,omitempty" json:"manifest,omitempty"`
+	filename       string
 }
 
 func IsLoadErr(err error) bool {
@@ -82,7 +83,7 @@ func FromFile(app *Application, yamlFilename string) error {
 
 			if err := FromReader(app, file); err == nil {
 				app.filename = yamlFilename
-				app.Root = filepath.Dir(yamlFilename)
+				app.SourceLocation = filepath.Dir(yamlFilename)
 				return nil
 			} else {
 				return err
@@ -104,7 +105,7 @@ func FromURL(app *Application, manifestOrAppFileUrl string) error {
 			if res.StatusCode < 400 {
 				if err := FromReader(app, res.Body); err == nil {
 					u.Path = filepath.Dir(u.Path)
-					app.Root = u.String()
+					app.SourceLocation = u.String()
 					return nil
 				} else {
 					return err
@@ -127,11 +128,15 @@ func FromURL(app *Application, manifestOrAppFileUrl string) error {
 //
 //   {HYDRA_ENV}.app.yaml
 //   app.yaml
+//   {HYDRA_OUTPUT_DIR}/{HYDRA_ENV}.app.yaml
+//   {HYDRA_OUTPUT_DIR}/app.yaml
 //   ~/.config/hydra/{HYDRA_ENV}.app.yaml
 //   ~/.config/hydra/app.yaml
 //   /etc/hydra/{HYDRA_ENV}.app.yaml
 //   /etc/hydra/app.yaml
+//   https://{HYDRA_HOST:-hydra.local}/manifest.yaml?env={HYDRA_ENV}&id={HYDRA_ID}&host=${HYDRA_HOSTNAME}
 //   https://{HYDRA_HOST:-hydra.local}/app.yaml?env={HYDRA_ENV}&id={HYDRA_ID}&host=${HYDRA_HOSTNAME}
+//   http://{HYDRA_HOST:-hydra.local}/manifest.yaml?env={HYDRA_ENV}&id={HYDRA_ID}&host=${HYDRA_HOSTNAME}
 //   http://{HYDRA_HOST:-hydra.local}/app.yaml?env={HYDRA_ENV}&id={HYDRA_ID}&host=${HYDRA_HOSTNAME}
 //
 func Load(locations ...string) (*Application, error) {
@@ -148,6 +153,14 @@ func Load(locations ...string) (*Application, error) {
 
 		candidates = append(candidates, EntrypointFilename)
 
+		if fileutil.DirExists(DefaultOutputDirectory) {
+			if hasEnv {
+				candidates = append(candidates, filepath.Join(DefaultOutputDirectory, Environment+`.`+EntrypointFilename))
+			}
+
+			candidates = append(candidates, filepath.Join(DefaultOutputDirectory, EntrypointFilename))
+		}
+
 		if hasEnv {
 			candidates = append(candidates, `~/.config/hydra/`+Environment+`.`+EntrypointFilename)
 		}
@@ -160,13 +173,13 @@ func Load(locations ...string) (*Application, error) {
 
 		candidates = append(candidates, `/etc/hydra/`+EntrypointFilename)
 
-		for _, entrypoint := range []string{
-			ManifestFilename,
-			EntrypointFilename,
+		for _, scheme := range []string{
+			`https`,
+			`http`,
 		} {
-			for _, scheme := range []string{
-				`https`,
-				`http`,
+			for _, entrypoint := range []string{
+				ManifestFilename,
+				EntrypointFilename,
 			} {
 				candidates = append(candidates, fmt.Sprintf(
 					"%s://%s/%s?env=%s&id=%s&host=%s",
@@ -212,7 +225,22 @@ func Load(locations ...string) (*Application, error) {
 func (self *Application) ensureManifest(rootDir string) error {
 	if self.Manifest == nil {
 		if fileutil.DirExists(rootDir) {
-			if m, err := CreateManifest(rootDir); err == nil {
+			manifestFile := filepath.Join(rootDir, ManifestFilename)
+
+			if fileutil.FileExists(manifestFile) {
+				if mfile, err := os.Open(manifestFile); err == nil {
+					defer mfile.Close()
+					self.Manifest = new(Manifest)
+
+					if err := yaml.NewDecoder(mfile).Decode(self.Manifest); err == nil {
+						return nil
+					} else {
+						return fmt.Errorf("invalid manifest %s: %v", manifestFile, err)
+					}
+				} else {
+					return fmt.Errorf("invalid manifest %s: %v", manifestFile, err)
+				}
+			} else if m, err := CreateManifest(rootDir); err == nil {
 				self.Manifest = m
 			} else {
 				return fmt.Errorf("cannot generate manifest: %v", err)
@@ -234,7 +262,7 @@ func (self *Application) Generate(intoDir string) error {
 		log.Infof("Generating application into directory: %s", intoDir)
 		log.Debugf("manifest contains %d files in %v", self.Manifest.FileCount, convutil.Bytes(self.Manifest.TotalSize))
 
-		if err := self.Manifest.Fetch(self.Root, intoDir); err != nil {
+		if err := self.Manifest.Fetch(self.SourceLocation, intoDir); err != nil {
 			return fmt.Errorf("fetch: %v", err)
 		}
 
@@ -296,6 +324,19 @@ func (self *Application) Generate(intoDir string) error {
 				out.Write(data)
 			} else {
 				return err
+			}
+
+			// write out the manifest we're working with
+			if mfile, err := os.Create(filepath.Join(intoDir, ManifestFilename)); err == nil {
+				defer mfile.Close()
+
+				if err := yaml.NewEncoder(mfile).Encode(&Application{
+					Manifest: self.Manifest,
+				}); err == nil {
+					mfile.Close()
+				} else {
+					return err
+				}
 			}
 
 			// write out the entrypoint file
