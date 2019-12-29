@@ -6,12 +6,14 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/ghetzel/go-stockutil/convutil"
 	"github.com/ghetzel/go-stockutil/fileutil"
 	"github.com/ghetzel/go-stockutil/log"
+	"github.com/ghetzel/go-stockutil/maputil"
 )
 
 type ManifestFile struct {
@@ -58,11 +60,12 @@ func (self ManifestFiles) TotalSize() (s convutil.Bytes) {
 }
 
 type Manifest struct {
-	Assets      ManifestFiles `yaml:"assets"`
-	Modules     ManifestFiles `yaml:"modules"`
-	GeneratedAt time.Time     `yaml:"generated_at,omitempty"`
-	TotalSize   int64         `yaml:"size"`
-	FileCount   int64         `yaml:"file_count"`
+	Assets        ManifestFiles `yaml:"assets"`
+	Modules       ManifestFiles `yaml:"modules"`
+	GlobalImports []string      `yaml:"globals,omitempty"`
+	GeneratedAt   time.Time     `yaml:"generated_at,omitempty"`
+	TotalSize     int64         `yaml:"size"`
+	FileCount     int64         `yaml:"file_count"`
 }
 
 func (self *Manifest) LoadModules(fromDir string) (modules []*Module, err error) {
@@ -82,15 +85,15 @@ func (self *Manifest) LoadModules(fromDir string) (modules []*Module, err error)
 	return
 }
 
-func (self *Manifest) GetEntrypoint() *ManifestFile {
-	for _, file := range self.Modules {
-		if file.Name == Entrypoint {
-			return file
-		}
-	}
+// func (self *Manifest) GetEntrypoint() *ManifestFile {
+// 	for _, file := range self.Modules {
+// 		if file.Name == EntrypointFilename {
+// 			return file
+// 		}
+// 	}
 
-	return nil
-}
+// 	return nil
+// }
 
 func (self *Manifest) Clean(destdir string) error {
 	for _, module := range self.Modules {
@@ -149,6 +152,7 @@ func (self *Manifest) Fetch(srcroot string, destdir string) error {
 // ----------------------------------------------------------------------------------------------
 func CreateManifest(srcdir string) (*Manifest, error) {
 	manifest := new(Manifest)
+	globalImports := make(map[string]bool)
 
 	log.Infof("Generating manifest recursively from path: %s", srcdir)
 
@@ -159,6 +163,14 @@ func CreateManifest(srcdir string) (*Manifest, error) {
 					if rel, err := filepath.Rel(srcdir, path); err == nil {
 						if rel == ManifestFilename {
 							return nil
+						} else if filepath.Base(path) == ModuleSpecFilename {
+							if spec, err := LoadModuleSpec(path); err == nil {
+								if spec.Global {
+									globalImports[filepath.Dir(path)] = true
+								}
+							} else {
+								return fmt.Errorf("create-manifest: invalid module spec %s: %v", path, err)
+							}
 						}
 
 						entry := &ManifestFile{
@@ -170,19 +182,19 @@ func CreateManifest(srcdir string) (*Manifest, error) {
 
 						if IsValidModuleFile(path) {
 							manifest.Modules = append(manifest.Modules, entry)
-							log.Noticef("module: %s (%v)", entry.Name, convutil.Bytes(entry.Size))
+							log.Debugf("create-manifest: add module: %s (%v)", entry.Name, convutil.Bytes(entry.Size))
 						} else {
 							manifest.Assets = append(manifest.Assets, entry)
-							log.Infof(" asset: %s (%v)", entry.Name, convutil.Bytes(entry.Size))
+							log.Debugf("create-manifest:  add asset: %s (%v)", entry.Name, convutil.Bytes(entry.Size))
 						}
 
 						manifest.FileCount += 1
 						manifest.TotalSize += info.Size()
 					} else {
-						return fmt.Errorf("%s: %v", path, err)
+						return fmt.Errorf("create-manifest: %s: %v", path, err)
 					}
 				} else {
-					return fmt.Errorf("%s: %v", path, err)
+					return fmt.Errorf("create-manifest: %s: %v", path, err)
 				}
 			}
 
@@ -192,6 +204,15 @@ func CreateManifest(srcdir string) (*Manifest, error) {
 		}
 	}); err == nil {
 		manifest.GeneratedAt = time.Now()
+		manifest.GlobalImports = maputil.StringKeys(globalImports)
+		sort.Strings(manifest.GlobalImports)
+
+		for i, gi := range manifest.GlobalImports {
+			gi, _ = filepath.Rel(srcdir, gi)
+			log.Debugf("create-manifest: global import: %s", gi)
+			manifest.GlobalImports[i] = gi
+		}
+
 		return manifest, nil
 	} else {
 		return nil, err

@@ -13,7 +13,6 @@ import (
 	"github.com/ghetzel/go-stockutil/netutil"
 	"github.com/ghetzel/go-stockutil/sliceutil"
 	"github.com/ghetzel/go-stockutil/stringutil"
-	yaml "gopkg.in/yaml.v2"
 )
 
 var DockerContainerQt = executil.Env(`HYDRA_DOCKER_XCB`, `ghetzel/hydra`)
@@ -44,8 +43,6 @@ type RunOptions struct {
 	WaitForNetworkAddress string
 	ServeAddress          string
 	ServeRoot             string
-	BuildDir              string
-	Entrypoint            string
 	ContainmentStrategy   RunContainment
 }
 
@@ -56,113 +53,13 @@ func (self *RunOptions) Valid() error {
 		return fmt.Errorf("cannot locate qmlscene binary named %q", self.QmlsceneBin)
 	}
 
-	if self.BuildDir == `` {
-		return fmt.Errorf("BuildDir cannot be empty")
-	}
-
-	if self.Entrypoint == `` {
-		return fmt.Errorf("Entrypoint cannot be empty")
-	}
-
 	return nil
 }
 
-func Generate(entrypoint string, app *Application) error {
-	if app == nil {
-		return fmt.Errorf("no application provided")
-	}
-
-	app.OutputDir = filepath.Dir(entrypoint)
-
-	// if the application has a manifest, fetch its contents
-	if app.Manifest != nil {
-		if !app.PreserveDir {
-			if err := app.Manifest.Clean(app.OutputDir); err != nil {
-				return fmt.Errorf("cleanup: %v", err)
-			}
-		}
-
-		if err := app.Manifest.Fetch(app.Root, app.OutputDir); err == nil {
-			if entry := app.Manifest.GetEntrypoint(); entry != nil {
-				filename := filepath.Join(app.OutputDir, entry.Name)
-
-				if actualApp, err := FromFile(filename); err == nil {
-					actualApp.Root = app.OutputDir
-					actualApp.OutputDir = app.OutputDir
-
-					if modules, err := app.Manifest.LoadModules(app.OutputDir); err == nil {
-						actualApp.Modules = modules
-					} else {
-						return fmt.Errorf("load modules: %v", err)
-					}
-
-					if outManifest, err := os.Create(filepath.Join(actualApp.OutputDir, ManifestFilename)); err == nil {
-						defer outManifest.Close()
-
-						if err := yaml.NewEncoder(outManifest).Encode(&Application{
-							Manifest: app.Manifest,
-						}); err == nil {
-							outManifest.Close()
-						} else {
-							return fmt.Errorf("cannot dump manifest: %v", err)
-						}
-					} else {
-						return fmt.Errorf("cannot create manifest: %v", err)
-					}
-
-					log.Noticef("manifest switched entrypoint to: %s", filename)
-					app = actualApp
-				} else {
-					return fmt.Errorf("bad entrypoint %s: %v", filename, err)
-				}
-			} else {
-				log.Warningf("entrypoint not in manifest")
-			}
-		} else {
-			return fmt.Errorf("fetch manifest: %v", err)
-		}
-	} else {
-		// remove existing builddir
-		if !app.PreserveDir {
-			if err := os.RemoveAll(app.OutputDir); err != nil {
-				return err
-			}
-		}
-
-		// create empty builddir
-		if err := os.MkdirAll(app.OutputDir, 0755); err != nil {
-			return err
-		}
-	}
-
-	// generate top-level QML (also writes out all dependencies)
-	if qml, err := app.QML(); err == nil {
-		// generate qmldir file
-		if err := app.WriteQmlManifest(); err != nil {
-			return fmt.Errorf("manifest error: %v", err)
-		}
-
-		// write out entrypoint QML
-		if file, err := os.Create(entrypoint); err == nil {
-			defer file.Close()
-			_, err := file.Write(qml)
-			return err
-		} else {
-			return fmt.Errorf("write: %v", err)
-		}
-	} else {
-		return fmt.Errorf("bad app: %v", err)
-	}
-}
-
-func RunWithOptions(app *Application, options RunOptions) error {
+func RunWithOptions(fromDir string, options RunOptions) error {
 	if err := options.Valid(); err == nil {
-		absBuildDir, _ := filepath.Abs(options.BuildDir)
-		entrypoint := filepath.Join(options.BuildDir, options.Entrypoint)
-
-		if err := Generate(entrypoint, app); err != nil {
-			return fmt.Errorf("generate failed: %v", err)
-		}
+		absBuildDir, _ := filepath.Abs(fromDir)
+		entrypoint := filepath.Join(fromDir, fileutil.SetExt(EntrypointFilename, `.qml`))
 
 		// wait for network
 		if netwait := options.WaitForNetworkTimeout; netwait != 0 {
@@ -192,7 +89,7 @@ func RunWithOptions(app *Application, options RunOptions) error {
 
 			go func() {
 				ServeRoot = options.ServeRoot
-				errchan <- Serve(srvaddr)
+				errchan <- Serve(srvaddr, fromDir)
 			}()
 		}
 
@@ -261,7 +158,6 @@ func RunWithOptions(app *Application, options RunOptions) error {
 						`--env`, `XAUTHORITY=/Xauthority`,
 						`--env`, `DISPLAY=`+xdisplay,
 						`--env`, `QT_QPA_PLATFORM=xcb`,
-						`--env`, `HYDRA_ENTRYPOINT=`+Entrypoint,
 						`--env`, `HYDRA_HOST=`+Domain,
 						`--env`, `HYDRA_ENV=`+Environment,
 						`--env`, `HYDRA_ID=`+ID,
@@ -275,10 +171,11 @@ func RunWithOptions(app *Application, options RunOptions) error {
 				errchan <- fmt.Errorf("cannot contain using docker-linuxfb: not yet implemented")
 				return
 			default:
-				runner = cmd(app.OutputDir, options.QmlsceneBin, qmlargs)
+				runner = cmd(fromDir, options.QmlsceneBin, qmlargs)
 			}
 
 			log.Debugf("run: %s", strings.Join(runner.Args, ` `))
+			log.Debugf("  dir: %s", runner.Dir)
 			errchan <- runner.Run()
 		}()
 

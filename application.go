@@ -9,15 +9,14 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 	"unicode"
 
+	"github.com/ghetzel/go-stockutil/convutil"
 	"github.com/ghetzel/go-stockutil/executil"
 	"github.com/ghetzel/go-stockutil/fileutil"
 	"github.com/ghetzel/go-stockutil/log"
-	"github.com/ghetzel/go-stockutil/maputil"
 	"github.com/ghetzel/go-stockutil/rxutil"
 	"github.com/ghetzel/go-stockutil/sliceutil"
 	"github.com/ghetzel/go-stockutil/stringutil"
@@ -25,10 +24,10 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+const EntrypointFilename string = `app.yaml`
+const ManifestFilename string = `manifest.yaml`
 const ModuleSpecFilename string = `module.yaml`
 
-var ManifestFilename string = `manifest.yaml`
-var Entrypoint string = executil.Env(`HYDRA_ENTRYPOINT`, `app.yaml`)
 var Domain = executil.Env(`HYDRA_HOST`, `hydra.local`)
 var Environment = executil.Env(`HYDRA_ENV`)
 var ID = executil.Env(`HYDRA_ID`)
@@ -38,19 +37,16 @@ var Client = &http.Client{
 }
 
 func init() {
-	os.Setenv(`HYDRA_ENTRYPOINT`, Entrypoint)
 	os.Setenv(`HYDRA_HOST`, Domain)
 	os.Setenv(`HYDRA_ENV`, Environment)
 	os.Setenv(`HYDRA_ID`, ID)
 }
 
 type Application struct {
-	Module      `yaml:",inline"`
-	Root        string    `yaml:"-" json:"root"`
-	Manifest    *Manifest `yaml:"manifest,omitempty"`
-	OutputDir   string    `yaml:"-" json:"-"`
-	PreserveDir bool      `yaml:"-" json:"-"`
-	filename    string
+	Module   `yaml:",inline"`
+	Root     string    `yaml:"-" json:"root"`
+	Manifest *Manifest `yaml:"manifest,omitempty"`
+	filename string
 }
 
 func IsLoadErr(err error) bool {
@@ -62,65 +58,65 @@ func IsLoadErr(err error) bool {
 }
 
 // Loads an application from the given io.Reader data.
-func FromReader(reader io.Reader) (*Application, error) {
+func FromReader(app *Application, reader io.Reader) error {
+	if app == nil {
+		return fmt.Errorf("must provide app instance")
+	}
+
 	if data, err := ioutil.ReadAll(reader); err == nil {
-		var app Application
-
-		if err := yaml.UnmarshalStrict(data, &app); err == nil {
-			app.Name = strings.TrimSuffix(filepath.Base(Entrypoint), filepath.Ext(Entrypoint))
-
-			return &app, nil
+		if err := yaml.UnmarshalStrict(data, app); err == nil {
+			return nil
 		} else {
-			return nil, fmt.Errorf("parse: %v", err)
+			return fmt.Errorf("parse: %v", err)
 		}
 	} else {
-		return nil, fmt.Errorf("from-read: %v", err)
+		return fmt.Errorf("from-read: %v", err)
 	}
 }
 
 // Loads an application from the given YAML filename.
-func FromFile(yamlFilename string) (*Application, error) {
+func FromFile(app *Application, yamlFilename string) error {
 	if fn, err := fileutil.ExpandUser(yamlFilename); err == nil {
 		if file, err := os.Open(fn); err == nil {
 			defer file.Close()
 
-			if app, err := FromReader(file); err == nil {
+			if err := FromReader(app, file); err == nil {
 				app.filename = yamlFilename
 				app.Root = filepath.Dir(yamlFilename)
-				return app, nil
+				return nil
 			} else {
-				return nil, err
+				return err
 			}
 		} else {
-			return nil, fmt.Errorf("from-open: %v", err)
+			return fmt.Errorf("from-open: %v", err)
 		}
 	} else {
-		return nil, fmt.Errorf("from-path: %v", err)
+		return fmt.Errorf("from-path: %v", err)
 	}
 }
 
 // Loads an application from the given URL.
-func FromURL(manifestOrAppFileUrl string) (*Application, error) {
+func FromURL(app *Application, manifestOrAppFileUrl string) error {
 	if u, err := url.Parse(manifestOrAppFileUrl); err == nil {
 		if res, err := Client.Get(u.String()); err == nil {
 			defer res.Body.Close()
 
 			if res.StatusCode < 400 {
-				if app, err := FromReader(res.Body); err == nil {
+				if err := FromReader(app, res.Body); err == nil {
 					u.Path = filepath.Dir(u.Path)
 					app.Root = u.String()
-					return app, nil
+					return nil
 				} else {
-					return nil, err
+					return err
 				}
 			} else {
-				return nil, fmt.Errorf("from-http: %s", res.Status)
+				return fmt.Errorf("from-http: %s", res.Status)
 			}
 		} else {
-			return nil, fmt.Errorf("from-http: %v", err)
+			return fmt.Errorf("from-http: %v", err)
 		}
 	} else {
-		return nil, fmt.Errorf("from-url: %v", err)
+		return fmt.Errorf("from-url: %v", err)
 	}
 }
 
@@ -147,32 +143,26 @@ func Load(locations ...string) (*Application, error) {
 		hasEnv := (Environment != ``)
 
 		if hasEnv {
-			candidates = append(candidates, Environment+`.`+ManifestFilename)
-			candidates = append(candidates, Environment+`.`+Entrypoint)
+			candidates = append(candidates, Environment+`.`+EntrypointFilename)
 		}
 
-		candidates = append(candidates, ManifestFilename)
-		candidates = append(candidates, Entrypoint)
+		candidates = append(candidates, EntrypointFilename)
 
 		if hasEnv {
-			candidates = append(candidates, `~/.config/hydra/`+Environment+`.`+ManifestFilename)
-			candidates = append(candidates, `~/.config/hydra/`+Environment+`.`+Entrypoint)
+			candidates = append(candidates, `~/.config/hydra/`+Environment+`.`+EntrypointFilename)
 		}
 
-		candidates = append(candidates, `~/.config/hydra/`+ManifestFilename)
-		candidates = append(candidates, `~/.config/hydra/`+Entrypoint)
+		candidates = append(candidates, `~/.config/hydra/`+EntrypointFilename)
 
 		if hasEnv {
-			candidates = append(candidates, `/etc/hydra/`+Environment+`.`+ManifestFilename)
-			candidates = append(candidates, `/etc/hydra/`+Environment+`.`+Entrypoint)
+			candidates = append(candidates, `/etc/hydra/`+Environment+`.`+EntrypointFilename)
 		}
 
-		candidates = append(candidates, `/etc/hydra/`+ManifestFilename)
-		candidates = append(candidates, `/etc/hydra/`+Entrypoint)
+		candidates = append(candidates, `/etc/hydra/`+EntrypointFilename)
 
 		for _, entrypoint := range []string{
 			ManifestFilename,
-			Entrypoint,
+			EntrypointFilename,
 		} {
 			for _, scheme := range []string{
 				`https`,
@@ -194,16 +184,17 @@ func Load(locations ...string) (*Application, error) {
 	}
 
 	for _, location := range candidates {
-		var app *Application
+		app := new(Application)
+
 		var err error
 		scheme, _ := stringutil.SplitPair(location, `://`)
 		log.Debugf("Load: trying %s", location)
 
 		switch scheme {
 		case `https`, `http`:
-			app, err = FromURL(location)
+			err = FromURL(app, location)
 		default:
-			app, err = FromFile(location)
+			err = FromFile(app, location)
 		}
 
 		if err == nil {
@@ -218,63 +209,115 @@ func Load(locations ...string) (*Application, error) {
 	return nil, fmt.Errorf("no application found by any means")
 }
 
-func (self *Application) QML() ([]byte, error) {
-	var out bytes.Buffer
-
-	// add standard library functions
-	self.Modules = append(self.getBuiltinModules(), self.Modules...)
-
-	// process all top-level import statements
-	for _, imp := range self.Imports {
-		if stmt, err := toImportStatement(imp); err == nil {
-			out.WriteString(stmt + "\n")
+func (self *Application) ensureManifest(rootDir string) error {
+	if self.Manifest == nil {
+		if fileutil.DirExists(rootDir) {
+			if m, err := CreateManifest(rootDir); err == nil {
+				self.Manifest = m
+			} else {
+				return fmt.Errorf("cannot generate manifest: %v", err)
+			}
 		} else {
-			return nil, err
+			return fmt.Errorf("cannot generate manifest for root %q", rootDir)
 		}
 	}
 
-	// retrieve and write out all modules
-	if err := self.writeModules(self, self.OutputDir); err == nil {
+	return nil
+}
+
+func (self *Application) Generate(intoDir string) error {
+	if err := os.MkdirAll(intoDir, 0700); err != nil {
+		return err
+	}
+
+	if err := self.ensureManifest(intoDir); err == nil {
+		log.Infof("Generating application into directory: %s", intoDir)
+		log.Debugf("manifest contains %d files in %v", self.Manifest.FileCount, convutil.Bytes(self.Manifest.TotalSize))
+
+		if err := self.Manifest.Fetch(self.Root, intoDir); err != nil {
+			return fmt.Errorf("fetch: %v", err)
+		}
+
+		var out bytes.Buffer
+
+		if modules, err := self.Manifest.LoadModules(intoDir); err == nil {
+			// add standard library functions
+			modules = append(self.getBuiltinModules(), modules...)
+
+			// write all modules out to files
+			for _, submodule := range modules {
+				if err := submodule.writeModuleQml(intoDir, self.Manifest.GlobalImports); err != nil {
+					return err
+				}
+
+				// if we got an entrypoint *from* the manifest, we assume it's contents
+				// should supercede our own
+				if submodule.RelativePath() == EntrypointFilename {
+					self.Module = *submodule
+				}
+			}
+		} else {
+			return err
+		}
+
+		// process all top-level import statements
+		for _, imp := range self.Imports {
+			if stmt, err := toImportStatement(imp); err == nil {
+				out.WriteString(stmt + "\n")
+			} else {
+				return err
+			}
+		}
+
 		out.WriteString(fmt.Sprintf("import %q\n", `.`))
-	} else {
-		return nil, err
-	}
+		out.WriteString("\n")
 
-	out.WriteString("\n")
+		if root := self.Definition; root != nil {
+			if root.ID == `` {
+				root.ID = `root`
+			}
 
-	if root := self.Definition; root != nil {
-		if root.ID == `` {
-			root.ID = `root`
-		}
+			// do some horrors to expose the top-level application item to the stdlib
+			var onCompleted string
 
-		// do some horrors to expose the top-level application item to the stdlib
-		var onCompleted string
+			if root.Properties == nil {
+				root.Properties = make(map[string]interface{})
+			}
 
-		if root.Properties == nil {
-			root.Properties = make(map[string]interface{})
-		}
+			if oc, ok := root.Properties[`Component.onCompleted`]; ok {
+				onCompleted = typeutil.String(oc) + "\n"
+			}
 
-		if oc, ok := root.Properties[`Component.onCompleted`]; ok {
-			onCompleted = typeutil.String(oc) + "\n"
-		}
+			onCompleted = `Hydra.root = ` + root.ID + ";\n" + onCompleted
+			root.Properties[`Component.onCompleted`] = Literal(onCompleted)
 
-		onCompleted = `Hydra.root = ` + root.ID + ";\n" + onCompleted
-		root.Properties[`Component.onCompleted`] = Literal(onCompleted)
+			// write child definitions
+			if data, err := root.QML(0, root); err == nil {
+				out.Write(data)
+			} else {
+				return err
+			}
 
-		if data, err := root.QML(0, root); err == nil {
-			out.Write(data)
-
-			return out.Bytes(), nil
+			// write out the entrypoint file
+			if _, err := fileutil.WriteFile(
+				&out,
+				filepath.Join(intoDir, fileutil.SetExt(EntrypointFilename, `.qml`)),
+			); err == nil {
+				// recursively generate all qmldirs
+				return self.writeQmlManifest(intoDir)
+			} else {
+				return err
+			}
 		} else {
-			return nil, err
+			return fmt.Errorf("invalid root definition")
 		}
 	} else {
-		return nil, fmt.Errorf("invalid root definition")
+		return err
 	}
 }
 
-func (self *Application) WriteQmlManifest() error {
-	if err := filepath.Walk(self.OutputDir, func(path string, info os.FileInfo, err error) error {
+func (self *Application) writeQmlManifest(rootDir string) error {
+	if err := filepath.Walk(rootDir, func(path string, info os.FileInfo, err error) error {
 		if err == nil {
 			if info.IsDir() {
 				return writeQmldir(path, ``)
@@ -285,36 +328,10 @@ func (self *Application) WriteQmlManifest() error {
 			return err
 		}
 	}); err == nil {
-		return writeQmldir(self.OutputDir, `Application`)
+		return writeQmldir(rootDir, `Application`)
 	} else {
 		return err
 	}
-}
-
-func (self *Application) String() string {
-	if data, err := self.QML(); err == nil {
-		return string(data)
-	} else {
-		return ``
-	}
-}
-
-func (self *Application) GlobalImportPaths() (paths []string) {
-	modpaths := make(map[string]interface{})
-
-	for _, mod := range self.deepSubmodules() {
-		if spec := mod.spec; spec != nil && spec.Global {
-			dir := filepath.Dir(mod.AbsolutePath(self.OutputDir))
-			modpaths[dir] = true
-		}
-	}
-
-	for _, abs := range maputil.StringKeys(modpaths) {
-		paths = append(paths, abs)
-	}
-
-	sort.Strings(paths)
-	return
 }
 
 // generates a syntactically-correct QML import statement from a string.

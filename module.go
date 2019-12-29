@@ -77,6 +77,7 @@ func LoadModule(uri string, module *Module) error {
 					module.Name = strings.TrimSuffix(filepath.Base(uri), filepath.Ext(uri))
 				}
 
+				log.Debugf("module loaded from: %s", uri)
 				return nil
 			} else {
 				return fmt.Errorf("parse: %v", err)
@@ -109,16 +110,21 @@ func (self *Module) AbsolutePath(outdir string) string {
 	return abs
 }
 
-func (self *Module) writeModules(app *Application, outdir string) error {
+func (self *Module) writeModuleQml(rootDir string, globalImports []string) error {
 	qmlfile := fileutil.SetExt(self.RelativePath(), `.qml`)
-	tgt := env(filepath.Join(outdir, qmlfile))
-	tgt, _ = filepath.Abs(tgt)
+	qmlfile = env(filepath.Join(rootDir, qmlfile))
+	qmlfile, _ = filepath.Abs(qmlfile)
+	parentDir := filepath.Dir(qmlfile)
 
-	if err := os.MkdirAll(filepath.Dir(tgt), 0755); err == nil {
+	// no matter what, make sure the rootDir is always a global import
+	absRootDir, _ := filepath.Abs(rootDir)
+	globalImports = append(globalImports, absRootDir)
+
+	if err := os.MkdirAll(parentDir, 0755); err == nil {
 		if defn := self.Definition; defn != nil {
-			log.Debugf("Generating %q", tgt)
+			log.Debugf("Generating %q", qmlfile)
 
-			if out, err := os.Create(tgt); err == nil {
+			if out, err := os.Create(qmlfile); err == nil {
 				defer out.Close()
 
 				if self.Singleton {
@@ -138,16 +144,27 @@ func (self *Module) writeModules(app *Application, outdir string) error {
 				}
 
 				// add paths that are supposed to be exposed to every module
-				for _, abs := range app.GlobalImportPaths() {
-					if rel, err := filepath.Rel(filepath.Dir(tgt), abs); err == nil {
-						if stmt, err := toImportStatement(rel); err == nil {
-							log.Debugf("    %s", stmt)
-							out.WriteString(stmt + "\n")
+				for _, gi := range globalImports {
+					if !filepath.IsAbs(gi) {
+						gi, _ = filepath.Abs(filepath.Join(rootDir, gi))
+					}
+
+					if fileutil.DirExists(gi) {
+						if rel, err := filepath.Rel(parentDir, gi); err == nil {
+							switch rel {
+							case `.`, ``:
+								break
+							default:
+								if stmt, err := toImportStatement(rel); err == nil {
+									log.Debugf("    %s", stmt)
+									out.WriteString(stmt + "\n")
+								} else {
+									return fmt.Errorf("module %q: import %s: %s", self.Name, rel, err)
+								}
+							}
 						} else {
-							return fmt.Errorf("module %q: import %s: %s", self.Name, rel, err)
+							log.Warningf("could not find relative from %q to %q: %v", qmlfile, gi, err)
 						}
-					} else {
-						log.Warningf("could not find relative from %q to %q: %v", tgt, abs, err)
 					}
 				}
 
@@ -190,17 +207,6 @@ func (self *Module) writeModules(app *Application, outdir string) error {
 		}
 	} else {
 		return fmt.Errorf("write module %v: %s", self.Name, err)
-	}
-
-	if len(self.Modules) > 0 {
-		// write out submodules
-		log.Debugf("  submodules: %d", len(self.Modules))
-
-		for _, mod := range self.Modules {
-			if err := mod.writeModules(app, outdir); err != nil {
-				return err
-			}
-		}
 	}
 
 	// all is well.

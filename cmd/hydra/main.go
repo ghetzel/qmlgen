@@ -3,7 +3,6 @@ package main
 import (
 	"io"
 	"os"
-	"path/filepath"
 
 	"github.com/ghetzel/cli"
 	"github.com/ghetzel/go-stockutil/log"
@@ -30,16 +29,6 @@ func main() {
 			Usage:  `The output directory to write the QML to.`,
 			Value:  `build`,
 			EnvVar: `HYDRA_OUTPUT_DIR`,
-		},
-		cli.BoolFlag{
-			Name:  `preserve-dir, P`,
-			Usage: `Whether to preserve the existing output directory before generating new files.`,
-		},
-		cli.StringFlag{
-			Name:   `entrypoint`,
-			Usage:  `The name of the application QML in the output directory`,
-			Value:  `app.qml`,
-			EnvVar: `HYDRA_ENTRYPOINT`,
 		},
 		cli.StringFlag{
 			Name:   `app-qrc`,
@@ -149,25 +138,18 @@ func main() {
 
 			log.Debugf("Loaded app: root=%v", app.Root)
 
-			app.PreserveDir = c.Bool(`preserve-dir`)
+			log.FatalIf(app.Generate(c.String(`output-dir`)))
 
 			if c.Bool(`run`) {
-				log.FatalIf(hydra.RunWithOptions(app, hydra.RunOptions{
+				log.FatalIf(hydra.RunWithOptions(c.String(`output-dir`), hydra.RunOptions{
 					QmlsceneBin:           c.String(`qml-runner`),
 					QmlsceneArgs:          argsAfter(c, `--`),
 					WaitForNetworkTimeout: c.Duration(`wait-for-network-timeout`),
 					WaitForNetworkAddress: c.String(`wait-for-network-address`),
 					ServeAddress:          c.String(`address`),
 					ServeRoot:             c.String(`server-root`),
-					BuildDir:              c.String(`output-dir`),
-					Entrypoint:            c.String(`entrypoint`),
 					ContainmentStrategy:   hydra.RunContainmentFromString(c.String(`containment-strategy`)),
 				}))
-			} else {
-				log.FatalIf(hydra.Generate(
-					filepath.Join(c.String(`output-dir`), c.String(`entrypoint`)),
-					app,
-				))
 			}
 		} else {
 			log.Fatal(err)

@@ -3,17 +3,25 @@ package hydra
 import (
 	"fmt"
 	"net"
+	"path/filepath"
 
 	"github.com/ghetzel/diecast"
 	"github.com/ghetzel/go-stockutil/fileutil"
+	"github.com/ghetzel/go-stockutil/log"
 )
 
 var ServeRoot = `www`
 var DiecastConfig = `diecast.yml`
 
-func Serve(address string) error {
+func Serve(address string, rootDir string) error {
 	if _, port, err := net.SplitHostPort(address); err == nil {
-		server := diecast.NewServer(ServeRoot)
+		if filepath.IsAbs(ServeRoot) {
+			rootDir = ServeRoot
+		} else {
+			rootDir = filepath.Join(rootDir, ServeRoot)
+		}
+
+		server := diecast.NewServer(rootDir)
 		server.Address = address
 		server.BindingPrefix = fmt.Sprintf("http://127.0.0.1:%s", port)
 		server.VerifyFile = ``
@@ -24,6 +32,7 @@ func Serve(address string) error {
 			}
 		}
 
+		log.Infof("Serving %s at %s", rootDir, address)
 		return server.Serve()
 	} else {
 		return fmt.Errorf("bad address: %v", err)
