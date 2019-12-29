@@ -44,7 +44,7 @@ func (self *ManifestFile) Validate(root string) error {
 }
 
 func (self *ManifestFile) Fetch(root string) (io.ReadCloser, error) {
-	return fetch(strings.TrimSuffix(root, `/`) + `/` + strings.TrimPrefix(self.Name, `/`))
+	return fetch(joinpath(root, self.Name))
 }
 
 type ManifestFiles []*ManifestFile
@@ -150,12 +150,14 @@ func (self *Manifest) Fetch(srcroot string, destdir string) error {
 func CreateManifest(srcdir string) (*Manifest, error) {
 	manifest := new(Manifest)
 
+	log.Infof("Generating manifest recursively from path: %s", srcdir)
+
 	if err := filepath.Walk(srcdir, func(path string, info os.FileInfo, err error) error {
 		if err == nil {
 			if !info.IsDir() {
 				if cksum, err := fileutil.ChecksumFile(path, `sha256`); err == nil {
 					if rel, err := filepath.Rel(srcdir, path); err == nil {
-						if strings.HasPrefix(info.Name(), `.`) || strings.HasPrefix(filepath.Dir(path), `.`) {
+						if rel == ManifestFilename {
 							return nil
 						}
 

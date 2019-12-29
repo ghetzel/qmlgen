@@ -115,6 +115,8 @@ func Generate(entrypoint string, app *Application) error {
 				} else {
 					return fmt.Errorf("bad entrypoint %s: %v", filename, err)
 				}
+			} else {
+				log.Warningf("entrypoint not in manifest")
 			}
 		} else {
 			return fmt.Errorf("fetch manifest: %v", err)

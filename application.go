@@ -147,36 +147,47 @@ func Load(locations ...string) (*Application, error) {
 		hasEnv := (Environment != ``)
 
 		if hasEnv {
+			candidates = append(candidates, Environment+`.`+ManifestFilename)
 			candidates = append(candidates, Environment+`.`+Entrypoint)
 		}
 
+		candidates = append(candidates, ManifestFilename)
 		candidates = append(candidates, Entrypoint)
 
 		if hasEnv {
+			candidates = append(candidates, `~/.config/hydra/`+Environment+`.`+ManifestFilename)
 			candidates = append(candidates, `~/.config/hydra/`+Environment+`.`+Entrypoint)
 		}
 
+		candidates = append(candidates, `~/.config/hydra/`+ManifestFilename)
 		candidates = append(candidates, `~/.config/hydra/`+Entrypoint)
 
 		if hasEnv {
+			candidates = append(candidates, `/etc/hydra/`+Environment+`.`+ManifestFilename)
 			candidates = append(candidates, `/etc/hydra/`+Environment+`.`+Entrypoint)
 		}
 
+		candidates = append(candidates, `/etc/hydra/`+ManifestFilename)
 		candidates = append(candidates, `/etc/hydra/`+Entrypoint)
 
-		for _, scheme := range []string{
-			`https`,
-			`http`,
+		for _, entrypoint := range []string{
+			ManifestFilename,
+			Entrypoint,
 		} {
-			candidates = append(candidates, fmt.Sprintf(
-				"%s://%s/%s?env=%s&id=%s&host=%s",
-				scheme,
-				Domain,
-				Entrypoint,
-				Environment,
-				ID,
-				Hostname,
-			))
+			for _, scheme := range []string{
+				`https`,
+				`http`,
+			} {
+				candidates = append(candidates, fmt.Sprintf(
+					"%s://%s/%s?env=%s&id=%s&host=%s",
+					scheme,
+					Domain,
+					entrypoint,
+					Environment,
+					ID,
+					Hostname,
+				))
+			}
 		}
 	} else {
 		candidates = locations
@@ -198,9 +209,7 @@ func Load(locations ...string) (*Application, error) {
 		if err == nil {
 			return app, nil
 		} else {
-			if IsLoadErr(err) {
-				log.Debugf("      load error: %v", err)
-			} else {
+			if !IsLoadErr(err) {
 				return app, err
 			}
 		}

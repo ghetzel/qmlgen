@@ -306,3 +306,16 @@ func relativePathFromSource(source string) string {
 		return source
 	}
 }
+
+func joinpath(base string, add string) string {
+	if strings.Contains(base, `://`) {
+		if u, err := url.Parse(base); err == nil {
+			u.Path = filepath.Join(u.Path, add)
+			return u.String()
+		} else {
+			log.Warningf("joinpath(%q, %q): %v", base, add, err)
+		}
+	}
+
+	return filepath.Join(base, add)
+}
