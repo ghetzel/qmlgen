@@ -1,0 +1,14 @@
+manifest:
+  assets: []
+  modules:
+  - name: app.yaml
+    size: 584
+    sha256: 2b17badaa4f4c7d8759040c1cc8ec77a4d37670fec9d692cb2b549bfd1087e07
+    mime: application/x-yaml
+  - name: lib/FitText.yaml
+    size: 313
+    sha256: 75e379a56e2812d4330125e98b37481f548ba42be485478512138e2753f1957a
+    mime: application/x-yaml
+  generated_at: 2019-12-29T17:16:36.666644268-05:00
+  size: 897
+  file_count: 2
