@@ -1,7 +1,9 @@
 package hydra
 
 import (
+	"archive/tar"
 	"bufio"
+	"compress/gzip"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -318,4 +320,115 @@ func joinpath(base string, add string) string {
 	}
 
 	return filepath.Join(base, add)
+}
+
+type archiveType int
+
+const (
+	NoArchive archiveType = iota
+	TarGz
+	Tar
+	Zip
+)
+
+func getArchiveType(archive string) archiveType {
+	archive = strings.ToLower(archive)
+
+	if strings.HasSuffix(archive, `.tar.gz`) {
+		return TarGz
+		// } else if strings.HasSuffix(archive, `.tar`) {
+		// 	return Tar
+		// } else if strings.HasSuffix(archive, `.zip`) {
+		// 	return Zip
+		// }
+	} else {
+		return NoArchive
+	}
+}
+
+func extract(manifest *Manifest, archive string, destdir string) error {
+	atype := getArchiveType(archive)
+
+	if atype != NoArchive {
+		if f, err := os.Open(archive); err == nil {
+			defer f.Close()
+
+			switch atype {
+			case TarGz:
+				if err := untar(destdir, f, func(path string, info os.FileInfo, err error) error {
+					if err == nil {
+						return manifest.Append(path, info)
+					} else {
+						return err
+					}
+				}); err != nil {
+					return err
+				}
+			default:
+				return fmt.Errorf("unsupported archive type")
+			}
+
+			f.Close()
+			return os.Remove(archive)
+		} else {
+			return err
+		}
+	} else {
+		return nil
+	}
+}
+
+func untar(dst string, r io.Reader, fn filepath.WalkFunc) error {
+	if gzr, err := gzip.NewReader(r); err == nil {
+		defer gzr.Close()
+
+		tr := tar.NewReader(gzr)
+
+		for {
+			header, err := tr.Next()
+
+			switch {
+			case err == io.EOF: // if no more files are found return
+				return nil
+			case err != nil: // return any other error
+				return err
+			case header == nil: // if the header is nil, just skip it (not sure how this happens)
+				continue
+			}
+
+			// the target location where the dir/file should be created
+			target := filepath.Join(dst, header.Name)
+
+			// check the file type
+			switch header.Typeflag {
+			case tar.TypeDir: // if its a dir and it doesn't exist create it
+				if err := os.MkdirAll(target, 0755); err != nil {
+					return err
+				}
+
+			case tar.TypeReg: // if it's a file create it
+				if f, err := os.OpenFile(target, os.O_CREATE|os.O_RDWR, os.FileMode(header.Mode)); err == nil {
+					defer f.Close()
+
+					if _, err := io.Copy(f, tr); err != nil {
+						return err
+					}
+
+					f.Close()
+				} else {
+					return err
+				}
+			}
+
+			if fn != nil {
+				info, serr := os.Stat(target)
+
+				if err := fn(target, info, serr); err != nil {
+					return err
+				}
+			}
+		}
+	} else {
+		return err
+	}
 }

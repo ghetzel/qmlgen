@@ -126,8 +126,8 @@ func FromURL(app *Application, manifestOrAppFileUrl string) error {
 // be retrieved via an HTTP GET request.  If location is empty, the following auto-generated
 // locations will be attempted (in order):
 //
-//   {HYDRA_ENV}.app.yaml
-//   app.yaml
+//   ./{HYDRA_ENV}.app.yaml
+//   ./app.yaml
 //   {HYDRA_OUTPUT_DIR}/{HYDRA_ENV}.app.yaml
 //   {HYDRA_OUTPUT_DIR}/app.yaml
 //   ~/.config/hydra/{HYDRA_ENV}.app.yaml
@@ -145,32 +145,16 @@ func Load(locations ...string) (*Application, error) {
 	var candidates []string
 
 	if len(locations) == 0 {
-		hasEnv := (Environment != ``)
-
-		if hasEnv {
-			candidates = append(candidates, Environment+`.`+EntrypointFilename)
-		}
-
+		candidates = append(candidates, Environment+`.`+EntrypointFilename)
 		candidates = append(candidates, EntrypointFilename)
 
-		if fileutil.DirExists(DefaultOutputDirectory) {
-			if hasEnv {
-				candidates = append(candidates, filepath.Join(DefaultOutputDirectory, Environment+`.`+EntrypointFilename))
-			}
+		candidates = append(candidates, filepath.Join(DefaultOutputDirectory, Environment+`.`+EntrypointFilename))
+		candidates = append(candidates, filepath.Join(DefaultOutputDirectory, EntrypointFilename))
 
-			candidates = append(candidates, filepath.Join(DefaultOutputDirectory, EntrypointFilename))
-		}
-
-		if hasEnv {
-			candidates = append(candidates, `~/.config/hydra/`+Environment+`.`+EntrypointFilename)
-		}
-
+		candidates = append(candidates, `~/.config/hydra/`+Environment+`.`+EntrypointFilename)
 		candidates = append(candidates, `~/.config/hydra/`+EntrypointFilename)
 
-		if hasEnv {
-			candidates = append(candidates, `/etc/hydra/`+Environment+`.`+EntrypointFilename)
-		}
-
+		candidates = append(candidates, `/etc/hydra/`+Environment+`.`+EntrypointFilename)
 		candidates = append(candidates, `/etc/hydra/`+EntrypointFilename)
 
 		for _, scheme := range []string{
@@ -197,6 +181,10 @@ func Load(locations ...string) (*Application, error) {
 	}
 
 	for _, location := range candidates {
+		if strings.HasPrefix(filepath.Base(location), `.`) {
+			continue
+		}
+
 		app := new(Application)
 
 		var err error
@@ -250,6 +238,7 @@ func (self *Application) ensureManifest(rootDir string) error {
 		}
 	}
 
+	self.Manifest.rootDir = rootDir
 	return nil
 }
 

@@ -1,14 +1,13 @@
 package main
 
 import (
-	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/ghetzel/cli"
 	"github.com/ghetzel/go-stockutil/log"
 	"github.com/ghetzel/go-stockutil/sliceutil"
 	"github.com/ghetzel/hydra"
-	yaml "gopkg.in/yaml.v2"
 )
 
 func main() {
@@ -96,34 +95,30 @@ func main() {
 					Usage: `The name of the file to write the manifest to.`,
 					Value: hydra.ManifestFilename,
 				},
+				cli.BoolFlag{
+					Name:  `bundle, b`,
+					Usage: `Generate a compressed application bundle containing the files listed in the manifest.`,
+				},
 			},
 			Action: func(c *cli.Context) {
 				from := sliceutil.OrString(c.Args().First(), `.`)
 
 				if manifest, err := hydra.CreateManifest(from); err == nil {
-					var w io.Writer
+					if c.Bool(`bundle`) {
+						bundleFile := filepath.Join(filepath.Dir(c.String(`output`)), `app.tar.gz`)
 
-					switch output := c.String(`output`); output {
-					case ``:
-						log.Fatalf("must specify an output destination")
-					case `-`:
-						w = os.Stdout
-					default:
-						if file, err := os.Create(output); err == nil {
-							defer file.Close()
-							w = file
-						} else {
-							log.Fatal(err)
-						}
+						// generate bundle archive
+						log.FatalIf(manifest.Bundle(bundleFile))
+
+						// replace manifest with a new one containing only the archive we just created
+						manifest = new(hydra.Manifest)
+						manifest.Append(bundleFile)
 					}
 
-					log.FatalIf(yaml.NewEncoder(w).Encode(&hydra.Application{
-						Manifest: manifest,
-					}))
+					log.FatalIf(manifest.WriteFile(c.String(`output`)))
 				} else {
 					log.Fatal(err)
 				}
-
 			},
 		},
 	}
