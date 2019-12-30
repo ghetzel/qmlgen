@@ -64,7 +64,7 @@ type Module struct {
 }
 
 func LoadModule(uri string, module *Module) error {
-	if rc, err := fetch(uri); err == nil {
+	if _, rc, err := fetch(uri); err == nil {
 		defer rc.Close()
 
 		if data, err := ioutil.ReadAll(rc); err == nil {

@@ -82,42 +82,46 @@ func lines(data []byte) (out []string) {
 	return
 }
 
-func fetch(uri string) (io.ReadCloser, error) {
+func fetch(uri string) (string, io.ReadCloser, error) {
 	var rc io.ReadCloser
+	var baseFilename string
 
 	if u, err := url.Parse(uri); err == nil {
 		switch u.Scheme {
 		case `http`, `https`:
 			if res, err := http.Get(u.String()); err == nil {
 				if res.StatusCode < 400 {
+					baseFilename = filepath.Base(u.Path)
 					rc = res.Body
 				} else {
-					return nil, fmt.Errorf("http: HTTP %v", res.Status)
+					return ``, nil, fmt.Errorf("http: HTTP %v", res.Status)
 				}
 			} else {
-				return nil, fmt.Errorf("http: %v", err)
+				return ``, nil, fmt.Errorf("http: %v", err)
 			}
 		case `file`, ``:
 			filename := fileutil.MustExpandUser(
 				filepath.Join(u.Host, u.Path),
 			)
 
+			baseFilename = filepath.Base(filename)
+
 			if f, err := os.Open(filename); err == nil {
 				rc = f
 			} else {
-				return nil, fmt.Errorf("file: %v", err)
+				return ``, nil, fmt.Errorf("file: %v", err)
 			}
 		default:
-			return nil, fmt.Errorf("unsupported scheme %q", u.Scheme)
+			return ``, nil, fmt.Errorf("unsupported scheme %q", u.Scheme)
 		}
 	} else {
-		return nil, fmt.Errorf("uri: %v", err)
+		return ``, nil, fmt.Errorf("uri: %v", err)
 	}
 
 	if rc != nil {
-		return rc, nil
+		return baseFilename, rc, nil
 	} else {
-		return nil, fmt.Errorf("no data")
+		return ``, nil, fmt.Errorf("no data")
 	}
 }
 
@@ -228,7 +232,7 @@ func writeQmldir(outdir string, modname string) error {
 		}
 
 		if qmldir, err := os.Create(path); err == nil {
-			log.Debugf("qmldir: %s", path)
+			// log.Debugf("qmldir: %s", path)
 			defer qmldir.Close()
 
 			w := bufio.NewWriter(qmldir)
@@ -309,26 +313,11 @@ func relativePathFromSource(source string) string {
 	}
 }
 
-func joinpath(base string, add string) string {
-	if strings.Contains(base, `://`) {
-		if u, err := url.Parse(base); err == nil {
-			u.Path = filepath.Join(u.Path, add)
-			return u.String()
-		} else {
-			log.Warningf("joinpath(%q, %q): %v", base, add, err)
-		}
-	}
-
-	return filepath.Join(base, add)
-}
-
 type archiveType int
 
 const (
 	NoArchive archiveType = iota
 	TarGz
-	Tar
-	Zip
 )
 
 func getArchiveType(archive string) archiveType {
@@ -336,11 +325,6 @@ func getArchiveType(archive string) archiveType {
 
 	if strings.HasSuffix(archive, `.tar.gz`) {
 		return TarGz
-		// } else if strings.HasSuffix(archive, `.tar`) {
-		// 	return Tar
-		// } else if strings.HasSuffix(archive, `.zip`) {
-		// 	return Zip
-		// }
 	} else {
 		return NoArchive
 	}
@@ -369,6 +353,8 @@ func extract(manifest *Manifest, archive string, destdir string) error {
 			}
 
 			f.Close()
+
+			log.Debugf("removing extracted archive: %s", archive)
 			return os.Remove(archive)
 		} else {
 			return err

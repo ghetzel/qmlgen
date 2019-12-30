@@ -111,8 +111,11 @@ func main() {
 						log.FatalIf(manifest.Bundle(bundleFile))
 
 						// replace manifest with a new one containing only the archive we just created
-						manifest = new(hydra.Manifest)
-						manifest.Append(bundleFile)
+						bundleManifest := hydra.NewManifest(filepath.Dir(bundleFile))
+						bundleManifest.Append(bundleFile)
+						bundleManifest.Assets[0].ArchiveFileCount = manifest.FileCount
+						bundleManifest.Assets[0].UncompressedSize = manifest.TotalSize
+						manifest = bundleManifest
 					}
 
 					log.FatalIf(manifest.WriteFile(c.String(`output`)))

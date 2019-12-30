@@ -26,8 +26,10 @@ func Serve(address string, rootDir string) error {
 		server.BindingPrefix = fmt.Sprintf("http://127.0.0.1:%s", port)
 		server.VerifyFile = ``
 
-		if fileutil.IsNonemptyFile(DiecastConfig) {
-			if err := server.LoadConfig(DiecastConfig); err != nil {
+		dcCfg := filepath.Join(rootDir, DiecastConfig)
+
+		if fileutil.IsNonemptyFile(dcCfg) {
+			if err := server.LoadConfig(dcCfg); err != nil {
 				return fmt.Errorf("server config: %v", err)
 			}
 		}

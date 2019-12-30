@@ -210,6 +210,7 @@ func Load(locations ...string) (*Application, error) {
 	return nil, fmt.Errorf("no application found by any means")
 }
 
+// This function guarantees that this application has a valid manifest, generating one if necessary.
 func (self *Application) ensureManifest(rootDir string) error {
 	if self.Manifest == nil {
 		if fileutil.DirExists(rootDir) {
@@ -238,10 +239,11 @@ func (self *Application) ensureManifest(rootDir string) error {
 		}
 	}
 
-	self.Manifest.rootDir = rootDir
+	self.Manifest.SetRoot(rootDir)
 	return nil
 }
 
+// Retrieve the files from this application's manifest and generate the final QML application.
 func (self *Application) Generate(intoDir string) error {
 	if err := os.MkdirAll(intoDir, 0700); err != nil {
 		return err
@@ -249,7 +251,10 @@ func (self *Application) Generate(intoDir string) error {
 
 	if err := self.ensureManifest(intoDir); err == nil {
 		log.Infof("Generating application into directory: %s", intoDir)
-		log.Debugf("manifest contains %d files in %v", self.Manifest.FileCount, convutil.Bytes(self.Manifest.TotalSize))
+
+		if self.Manifest.FileCount > 0 {
+			log.Debugf("manifest contains %d files in %v", self.Manifest.FileCount, convutil.Bytes(self.Manifest.TotalSize))
+		}
 
 		if err := self.Manifest.Fetch(self.SourceLocation, intoDir); err != nil {
 			return fmt.Errorf("fetch: %v", err)

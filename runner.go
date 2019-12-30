@@ -174,8 +174,7 @@ func RunWithOptions(fromDir string, options RunOptions) error {
 				runner = cmd(fromDir, options.QmlsceneBin, qmlargs)
 			}
 
-			log.Debugf("run: %s", strings.Join(runner.Args, ` `))
-			log.Debugf("  dir: %s", runner.Dir)
+			log.Debugf("run[%s]: %s", runner.Dir, strings.Join(runner.Args, ` `))
 			errchan <- runner.Run()
 		}()
 
