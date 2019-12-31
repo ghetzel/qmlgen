@@ -32,6 +32,6 @@ arm:
 	GOARCH=arm go build -o bin/hydra-linux-arm cmd/hydra/*.go
 	cp bin/hydra-linux-arm ~/bin/hydra-linux-arm
 
-docker:
+docker: fmt arm
 	docker build -t registry.apps.gammazeta.net/ghetzel/hydra:arm .
 	docker push registry.apps.gammazeta.net/ghetzel/hydra:arm

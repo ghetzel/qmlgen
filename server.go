@@ -15,26 +15,31 @@ var DiecastConfig = `diecast.yml`
 
 func Serve(address string, rootDir string) error {
 	if _, port, err := net.SplitHostPort(address); err == nil {
+		serveDir := rootDir
+		dcCfg := filepath.Join(rootDir, DiecastConfig)
+
 		if filepath.IsAbs(ServeRoot) {
-			rootDir = ServeRoot
+			serveDir = ServeRoot
 		} else {
-			rootDir = filepath.Join(rootDir, ServeRoot)
+			serveDir = filepath.Join(rootDir, ServeRoot)
 		}
 
-		server := diecast.NewServer(rootDir)
+		server := diecast.NewServer(serveDir)
 		server.Address = address
 		server.BindingPrefix = fmt.Sprintf("http://127.0.0.1:%s", port)
 		server.VerifyFile = ``
 
-		dcCfg := filepath.Join(rootDir, DiecastConfig)
+		log.Debugf("looking for Diecast config at: %s", dcCfg)
 
 		if fileutil.IsNonemptyFile(dcCfg) {
-			if err := server.LoadConfig(dcCfg); err != nil {
+			if err := server.LoadConfig(dcCfg); err == nil {
+				log.Infof("Loaded Diecast config from %s", dcCfg)
+			} else {
 				return fmt.Errorf("server config: %v", err)
 			}
 		}
 
-		log.Infof("Serving %s at %s", rootDir, address)
+		log.Infof("Serving %s at %s", serveDir, address)
 		return server.Serve()
 	} else {
 		return fmt.Errorf("bad address: %v", err)
