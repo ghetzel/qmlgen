@@ -215,6 +215,7 @@ func (self *Application) ensureManifest(rootDir string) error {
 	if self.Manifest == nil {
 		if fileutil.DirExists(rootDir) {
 			manifestFile := filepath.Join(rootDir, ManifestFilename)
+			srcDir := ``
 
 			if fileutil.FileExists(manifestFile) {
 				if mfile, err := os.Open(manifestFile); err == nil {
@@ -222,15 +223,33 @@ func (self *Application) ensureManifest(rootDir string) error {
 					self.Manifest = new(Manifest)
 
 					if err := yaml.NewDecoder(mfile).Decode(self.Manifest); err == nil {
-						return nil
+						if self.Manifest.TotalSize > 0 {
+							return nil
+						} else {
+							self.Manifest = nil
+						}
 					} else {
 						return fmt.Errorf("invalid manifest %s: %v", manifestFile, err)
 					}
 				} else {
 					return fmt.Errorf("invalid manifest %s: %v", manifestFile, err)
 				}
-			} else if m, err := CreateManifest(rootDir); err == nil {
-				self.Manifest = m
+			}
+
+			if fileutil.FileExists(self.SourceLocation) {
+				srcDir = filepath.Dir(self.SourceLocation)
+			} else if fileutil.DirExists(self.SourceLocation) {
+				srcDir = self.SourceLocation
+			} else {
+				return fmt.Errorf("no manifest found and unable to determine source directory")
+			}
+
+			if m, err := CreateManifest(srcDir); err == nil {
+				if err := m.refreshGlobalImports(); err == nil {
+					self.Manifest = m
+				} else {
+					return err
+				}
 			} else {
 				return fmt.Errorf("cannot generate manifest: %v", err)
 			}

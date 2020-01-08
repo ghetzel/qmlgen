@@ -59,8 +59,10 @@ func (self *ManifestFile) validate(root string) error {
 func (self *ManifestFile) fetch(root string) (string, io.ReadCloser, error) {
 	if strings.Contains(self.Name, `://`) {
 		return fetch(self.Name)
+	} else if _, rc, err := fetch(filepath.Join(root, self.Name)); err == nil {
+		return self.Name, rc, err
 	} else {
-		return fetch(filepath.Join(root, self.Name))
+		return ``, nil, err
 	}
 }
 
@@ -142,6 +144,23 @@ func (self *Manifest) ShouldAppend(path string) bool {
 	}
 
 	return true
+}
+
+func (self *Manifest) refreshGlobalImports() error {
+	return filepath.Walk(self.rootDir, func(path string, info os.FileInfo, err error) error {
+		if filepath.Base(path) == ModuleSpecFilename {
+			if spec, err := LoadModuleSpec(path); err == nil {
+				if spec.Global {
+					self.AddGlobalImportPath(filepath.Dir(self.rel(path)))
+				}
+			} else {
+				return fmt.Errorf("manifest: invalid module spec %s: %v", path, err)
+			}
+
+		}
+
+		return nil
+	})
 }
 
 func (self *Manifest) rel(path string) string {
@@ -232,6 +251,11 @@ func (self *Manifest) Fetch(srcroot string, destdir string) error {
 
 			if filename, rc, err := file.fetch(srcroot); err == nil {
 				dest := filepath.Join(destdir, filename)
+
+				if fileutil.SameFile(filename, dest) {
+					continue
+				}
+
 				log.Debugf("  writing file to: %s", dest)
 
 				defer rc.Close()
