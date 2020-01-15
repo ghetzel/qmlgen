@@ -56,6 +56,28 @@ func (self *Application) getBuiltinModules() []*Module {
 						Name:       `vmax`,
 						Arguments:  []string{`pct`, `parent`},
 						Definition: `return Math.max(vw(pct, parent), vh(pct, parent));`,
+					}, {
+						Name:      `align`,
+						Arguments: []string{`h`},
+						Definition: `
+							if (h == 'right') {
+								return Text.AlignRight;
+							} else if (h == 'center') {
+								return Text.AlignHCenter;
+							} else {
+								return Text.AlignLeft;
+							}`,
+					}, {
+						Name:      `valign`,
+						Arguments: []string{`h`},
+						Definition: `
+							if (v == 'bottom') {
+								return Text.AlignBottom;
+							} else if (v == 'center') {
+								return Text.AlignVCenter;
+							} else {
+								return Text.AlignTop;
+							}`,
 					},
 				},
 			},
