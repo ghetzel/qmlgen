@@ -1,11 +1,15 @@
 package hydra
 
+//go:generate esc -o static.go -pkg hydra -modtime 1500000000 -prefix templates templates
+
 import (
 	"encoding/xml"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/ghetzel/go-stockutil/fileutil"
 )
 
 const QrcDoctype = "<!DOCTYPE RCC>\n"
@@ -24,8 +28,29 @@ type RCC struct {
 	Resources *QResource `xml:"qresource,omitempty"`
 }
 
-// Generates
-func ManifestFromDir(dirname string) ([]byte, error) {
+func qrcSkipFile(filename string) bool {
+	base := filepath.Base(filename)
+	ext := strings.ToLower(filepath.Ext(base))
+
+	if strings.HasPrefix(filename, `.`) {
+		return true
+	} else if strings.HasPrefix(base, `.`) {
+		return true
+	}
+
+	switch ext {
+	case `.qrc`, `.qmlc`, `.jsc`:
+		return true
+	case `.yaml`:
+		qml := fileutil.SetExt(filename, `.qml`, `.yaml`)
+		return fileutil.FileExists(qml)
+	default:
+		return false
+	}
+}
+
+// Generates a Qt Resource file from the files in the given directory.
+func QrcFromDir(dirname string) (*RCC, error) {
 	rcc := &RCC{
 		Version:   `1.0`,
 		Resources: new(QResource),
@@ -36,20 +61,17 @@ func ManifestFromDir(dirname string) ([]byte, error) {
 			return err
 		} else if info.IsDir() {
 			return nil
-		} else if strings.HasSuffix(info.Name(), `.qrc`) {
+		} else if qrcSkipFile(path) {
 			return nil
 		} else {
 			rcc.Resources.Files = append(rcc.Resources.Files, QrcFile{
 				Name: strings.TrimPrefix(path, dirname+`/`),
 			})
+
 			return nil
 		}
 	}); err == nil {
-		if out, err := xml.MarshalIndent(rcc, ``, Indent); err == nil {
-			return append([]byte(QrcDoctype), out...), nil
-		} else {
-			return nil, fmt.Errorf("marshal: %v", err)
-		}
+		return rcc, nil
 	} else {
 		return nil, fmt.Errorf("walk dir %s: %v", dirname, err)
 	}

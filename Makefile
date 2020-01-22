@@ -9,6 +9,7 @@ CGO_ENABLED ?= 0
 all: deps fmt $(BIN)
 
 fmt:
+	go generate -x ./...
 	go fmt ./...
 
 deps:

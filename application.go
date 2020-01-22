@@ -2,6 +2,7 @@ package hydra
 
 import (
 	"bytes"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -17,6 +18,7 @@ import (
 	"github.com/ghetzel/go-stockutil/executil"
 	"github.com/ghetzel/go-stockutil/fileutil"
 	"github.com/ghetzel/go-stockutil/log"
+	"github.com/ghetzel/go-stockutil/maputil"
 	"github.com/ghetzel/go-stockutil/rxutil"
 	"github.com/ghetzel/go-stockutil/sliceutil"
 	"github.com/ghetzel/go-stockutil/stringutil"
@@ -27,6 +29,7 @@ import (
 const EntrypointFilename string = `app.yaml`
 const ManifestFilename string = `manifest.yaml`
 const ModuleSpecFilename string = `module.yaml`
+const AppQrcFile = `app.qrc`
 
 var DefaultOutputDirectory = executil.Env(`HYDRA_OUTPUT_DIR`, `build`)
 var Domain = executil.Env(`HYDRA_HOST`, `hydra.local`)
@@ -212,7 +215,7 @@ func Load(locations ...string) (*Application, error) {
 
 // This function guarantees that this application has a valid manifest, generating one if necessary.
 func (self *Application) ensureManifest(rootDir string) error {
-	if self.Manifest == nil {
+	if self.Manifest == nil || self.Manifest.FileCount == 0 {
 		if fileutil.DirExists(rootDir) {
 			manifestFile := filepath.Join(rootDir, ManifestFilename)
 			srcDir := ``
@@ -262,8 +265,65 @@ func (self *Application) ensureManifest(rootDir string) error {
 	return nil
 }
 
+func (self *Application) writeQrc(intoDir string) error {
+	if qrc, err := self.Manifest.QRC(); err == nil {
+		if qrcfile, err := os.Create(filepath.Join(intoDir, AppQrcFile)); err == nil {
+			defer qrcfile.Close()
+
+			if out, err := xml.MarshalIndent(qrc, ``, Indent); err == nil {
+				if _, err := qrcfile.Write(append([]byte(QrcDoctype), out...)); err == nil {
+					return nil
+				} else {
+					return err
+				}
+			} else {
+				return err
+			}
+		} else {
+			return err
+		}
+	} else {
+		return err
+	}
+}
+
+func (self *Application) writeAutogenAssets(intoDir string) error {
+	fs := FS(false)
+
+	for file := range maputil.M(_escData).Iter(maputil.IterOptions{
+		SortKeys: true,
+	}) {
+		if file.K == `/` {
+			continue
+		}
+
+		if src, err := fs.Open(file.K); err == nil {
+			defer src.Close()
+			dstfile := filepath.Join(intoDir, file.K)
+
+			if dst, err := os.Create(dstfile); err == nil {
+				defer dst.Close()
+
+				if n, err := io.Copy(dst, src); err == nil {
+					log.Debugf("autogen: wrote %s (%d bytes)", dstfile, n)
+				} else {
+					return err
+				}
+			} else {
+				return err
+			}
+		} else {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // Retrieve the files from this application's manifest and generate the final QML application.
 func (self *Application) Generate(intoDir string) error {
+	os.RemoveAll(intoDir)
+
 	if err := os.MkdirAll(intoDir, 0700); err != nil {
 		return err
 	}
@@ -358,7 +418,21 @@ func (self *Application) Generate(intoDir string) error {
 				filepath.Join(intoDir, fileutil.SetExt(EntrypointFilename, `.qml`)),
 			); err == nil {
 				// recursively generate all qmldirs
-				return self.writeQmlManifest(intoDir)
+				if err := self.writeQmlManifest(intoDir); err != nil {
+					return err
+				}
+
+				// generate app.qrc
+				if err := self.writeQrc(intoDir); err != nil {
+					return err
+				}
+
+				// generate build files
+				if err := self.writeAutogenAssets(intoDir); err != nil {
+					return err
+				}
+
+				return nil
 			} else {
 				return err
 			}

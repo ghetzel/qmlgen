@@ -234,6 +234,10 @@ func (self *Manifest) Append(path string, fi ...os.FileInfo) error {
 	return nil
 }
 
+func (self *Manifest) QRC() (*RCC, error) {
+	return QrcFromDir(self.rootDir)
+}
+
 func (self *Manifest) Fetch(srcroot string, destdir string) error {
 	var toFetch ManifestFiles
 
