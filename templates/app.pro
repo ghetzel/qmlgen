@@ -1,5 +1,5 @@
 DESTDIR = .
-TARGET = catalina-ui
+TARGET = app
 
 BUILDDIR = qt
 OBJECTS_DIR = $${BUILDDIR}/obj
@@ -7,7 +7,7 @@ RESOURCES = app.qrc
 MOC_DIR = $${BUILDDIR}/moc
 RCC_DIR = $${BUILDDIR}/rcc
 UI_DIR = $${BUILDDIR}/ui
-MAKEFILE = $${BUILDDIR}/Makefile
+MAKEFILE = Makefile
 
 SOURCES += \
     main.cpp \

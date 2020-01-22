@@ -40,6 +40,11 @@ var Client = &http.Client{
 	Timeout: 10 * time.Second,
 }
 
+type GenerateOptions struct {
+	DestDir   string
+	Autobuild bool
+}
+
 func init() {
 	os.Setenv(`HYDRA_HOST`, Domain)
 	os.Setenv(`HYDRA_ENV`, Environment)
@@ -321,7 +326,9 @@ func (self *Application) writeAutogenAssets(intoDir string) error {
 }
 
 // Retrieve the files from this application's manifest and generate the final QML application.
-func (self *Application) Generate(intoDir string) error {
+func (self *Application) Generate(options GenerateOptions) error {
+	intoDir := options.DestDir
+
 	os.RemoveAll(intoDir)
 
 	if err := os.MkdirAll(intoDir, 0700); err != nil {
@@ -430,6 +437,23 @@ func (self *Application) Generate(intoDir string) error {
 				// generate build files
 				if err := self.writeAutogenAssets(intoDir); err != nil {
 					return err
+				}
+
+				if options.Autobuild {
+					log.Infof("building application: %s/app", intoDir)
+
+					for _, program := range []string{
+						`qmake`,
+						`make`,
+					} {
+						cmd := executil.Command(program)
+						cmd.Dir = intoDir
+						log.Debugf("running command: %q", program)
+
+						if err := cmd.Run(); err != nil {
+							return err
+						}
+					}
 				}
 
 				return nil

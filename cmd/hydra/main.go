@@ -78,6 +78,10 @@ func main() {
 			Name:  `location, l`,
 			Usage: `Specify a source location path or URL where data should be retrieved from.`,
 		},
+		cli.BoolFlag{
+			Name:  `autobuild, B`,
+			Usage: `Whether to automatically compile the generated QML into a single binary.`,
+		},
 	}
 
 	app.Before = func(c *cli.Context) error {
@@ -136,7 +140,10 @@ func main() {
 
 			log.Debugf("Loaded app: location=%v", app.SourceLocation)
 
-			log.FatalIf(app.Generate(c.String(`output-dir`)))
+			log.FatalIf(app.Generate(hydra.GenerateOptions{
+				DestDir:   c.String(`output-dir`),
+				Autobuild: c.Bool(`autobuild`),
+			}))
 
 			if c.Bool(`run`) {
 				log.FatalIf(hydra.RunWithOptions(c.String(`output-dir`), hydra.RunOptions{
