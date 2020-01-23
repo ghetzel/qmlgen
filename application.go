@@ -31,6 +31,7 @@ const EntrypointFilename string = `app.yaml`
 const ManifestFilename string = `manifest.yaml`
 const ModuleSpecFilename string = `module.yaml`
 const AppQrcFile = `app.qrc`
+const ErrorContextLines int = 5
 
 var DefaultOutputDirectory = executil.Env(`HYDRA_OUTPUT_DIR`, `build`)
 var Domain = executil.Env(`HYDRA_HOST`, `hydra.local`)
@@ -500,9 +501,39 @@ func (self *Application) Generate(options GenerateOptions) error {
 						}
 
 						cmd.OnStderr = func(line string, _ bool) {
-							if line != `` {
-								log.Infof("[%s] %s", program, line)
+							if strings.HasPrefix(line, `Error compiling qml file: `) {
+
+								if parts := strings.Split(line, `:`); len(parts) > 4 {
+									qmlfile := filepath.Join(intoDir, strings.TrimSpace(parts[1]))
+									lineno := int(typeutil.Int(parts[2]))
+									charno := int(typeutil.Int(parts[3]))
+
+									if lineno > 0 {
+										log.Errorf("[%s] %s", program, line)
+										log.Debugf("[%s]      \u256d%s", program, strings.Repeat("\u2500", 69))
+
+										for l := (lineno - ErrorContextLines); l < (lineno + ErrorContextLines); l++ {
+											if ctx := fileutil.ShouldGetNthLine(qmlfile, l); ctx != `` {
+												if l == lineno {
+													log.Debugf("[%s]  %3d \u2502 ${red}%s${reset}", program, l, ctx)
+													log.Debugf("[%s]      \u2502 ${white+b}%s${reset}", program, strings.Repeat(` `, charno-1)+`^`)
+												} else {
+													log.Debugf("[%s]  %3d \u2502 %s", program, l, ctx)
+												}
+											}
+										}
+
+										log.Debugf("[%s]      \u2570%s", program, strings.Repeat("\u2500", 69))
+
+										return
+									}
+								}
+
+							} else if line != `` {
+								return
 							}
+
+							log.Errorf("[%s] %s", program, line)
 						}
 
 						log.Debugf("running command: %q", program)
