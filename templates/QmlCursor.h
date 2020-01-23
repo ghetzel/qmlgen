@@ -20,6 +20,6 @@ public:
 };
 
 // Define the singleton type provider function (callback).
-QObject *qmlcursor_singletontype_provider(QQmlEngine*, QJSEngine*);
+QObject *qmlcursor_singletontype_provider(QQmlEngine *, QJSEngine *);
 
 #endif // QMLCURSOR_H

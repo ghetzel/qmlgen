@@ -1,28 +1,31 @@
 #include "QmlEnvironmentVariable.h"
 #include <stdlib.h>
 
-QString QmlEnvironmentVariable::value(const QString& name)
+QString QmlEnvironmentVariable::value(const QString &name)
 {
     return qgetenv(qPrintable(name));
 }
 
-QString QmlEnvironmentVariable::value(const QString& name, const QString& fallback)
+QString QmlEnvironmentVariable::value(const QString &name, const QString &fallback)
 {
     const QString out = qgetenv(qPrintable(name));
 
-    if (out.isEmpty()) {
+    if (out.isEmpty())
+    {
         return fallback;
-    } else {
+    }
+    else
+    {
         return out;
     }
 }
 
-void QmlEnvironmentVariable::setValue(const QString& name, const QString &value)
+void QmlEnvironmentVariable::setValue(const QString &name, const QString &value)
 {
     qputenv(qPrintable(name), value.toLocal8Bit());
 }
 
-void QmlEnvironmentVariable::unset(const QString& name)
+void QmlEnvironmentVariable::unset(const QString &name)
 {
     qunsetenv(qPrintable(name));
 }

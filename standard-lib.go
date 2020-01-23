@@ -24,6 +24,10 @@ func (self *Application) getBuiltinModules() []*Module {
 						Type:  `Item`,
 						Name:  `http`,
 						Value: Literal(`i_http`),
+					}, {
+						Type:  `string`,
+						Name:  `version`,
+						Value: Version,
 					},
 				},
 				Components: []*Component{
@@ -189,6 +193,10 @@ func (self *Application) getBuiltinModules() []*Module {
 					},
 				},
 				Functions: []Function{
+					{
+						Name:       `init`,
+						Definition: `console.debug("Hydra v" + Hydra.version + " initialized")`,
+					},
 					{
 						Name:       `vw`,
 						Arguments:  []string{`pct`, `parent`},

@@ -51,10 +51,15 @@ func init() {
 	os.Setenv(`HYDRA_ID`, ID)
 }
 
+type BuildOptions struct {
+	QT []string `yaml:"qt" json:"qt"`
+}
+
 type Application struct {
 	Module         `yaml:",inline"`
-	SourceLocation string    `yaml:"location,omitempty" json:"location,omitempty"`
-	Manifest       *Manifest `yaml:"manifest,omitempty" json:"manifest,omitempty"`
+	SourceLocation string        `yaml:"location,omitempty" json:"location,omitempty"`
+	Manifest       *Manifest     `yaml:"manifest,omitempty" json:"manifest,omitempty"`
+	BuildOptions   *BuildOptions `yaml:"build,omitempty"    json:"build,omitempty"`
 	filename       string
 }
 
@@ -396,7 +401,7 @@ func (self *Application) Generate(options GenerateOptions) error {
 				onCompleted = typeutil.String(oc) + "\n"
 			}
 
-			onCompleted = `Hydra.root = ` + root.ID + ";\n" + onCompleted
+			onCompleted = `Hydra.root = ` + root.ID + "; Hydra.init()\n" + onCompleted
 			root.Properties[`Component.onCompleted`] = Literal(onCompleted)
 
 			// write child definitions
@@ -448,6 +453,18 @@ func (self *Application) Generate(options GenerateOptions) error {
 					} {
 						cmd := executil.Command(program)
 						cmd.Dir = intoDir
+						cmd.OnStdout = func(line string, _ bool) {
+							if line != `` {
+								log.Debugf("[%s] %s", program, line)
+							}
+						}
+
+						cmd.OnStderr = func(line string, _ bool) {
+							if line != `` {
+								log.Infof("[%s] %s", program, line)
+							}
+						}
+
 						log.Debugf("running command: %q", program)
 
 						if err := cmd.Run(); err != nil {

@@ -1,17 +1,16 @@
 #include <QApplication>
-#include <QByteArray>
-#include <QDir>
 #include <QFile>
 #include <QIODevice>
-#include <QQmlEngine>
+#include <QObject>
+#include <QQmlApplicationEngine>
+#include <QQmlComponent>
+#include <QQmlContext>
 #include <QString>
+#include <QStringList>
 #include <QTextStream>
-#include <QUrl>
 #include <QtDebug>
 #include <QtGui/QCursor>
 #include <QtGui/QFontDatabase>
-#include <QtGui/QPixmap>
-#include <QtQml/QQmlApplicationEngine>
 
 #include "QmlEnvironmentVariable.h"
 #include "QmlCursor.h"
@@ -55,10 +54,6 @@ void loadFonts()
             qDebug() << "  " << fonts.at(i);
         }
     }
-    else
-    {
-        qWarning() << "Failed to open manifest";
-    }
 }
 
 int main(int argc, char **argv)
@@ -73,8 +68,6 @@ int main(int argc, char **argv)
         app.setOverrideCursor(QCursor(QPixmap(cursorFile)));
     }
 
-    QQmlApplicationEngine engine;
-
     qmlRegisterSingletonType<QmlEnvironmentVariable>(
         "Hydra", 1, 0,
         "EnvironmentVariable",
@@ -87,7 +80,8 @@ int main(int argc, char **argv)
 
     loadFonts();
 
-    engine.load(QUrl(QStringLiteral("qrc:/app.qml")));
+    QQmlApplicationEngine engine(
+        QmlEnvironmentVariable::value("HYDRA_APP_QML", "qrc:/app.qml"));
 
-    app.exec();
+    return app.exec();
 }

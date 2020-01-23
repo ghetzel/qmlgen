@@ -39,7 +39,7 @@ func qrcSkipFile(filename string) bool {
 	}
 
 	switch ext {
-	case `.qrc`, `.qmlc`, `.jsc`:
+	case `.qmlc`, `.jsc`:
 		return true
 	case `.yaml`:
 		qml := fileutil.SetExt(filename, `.qml`, `.yaml`)
