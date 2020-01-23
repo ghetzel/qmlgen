@@ -517,6 +517,10 @@ func toImportStatement(imp string) (string, error) {
 	imp = strings.TrimSpace(imp)
 	imp = env(imp)
 
+	if strings.HasPrefix(imp, `qrc:`) {
+		return fmt.Sprintf("import %q", imp), nil
+	}
+
 	parts := rxutil.Whitespace.Split(imp, 2)
 	alias, lib := stringutil.SplitPairTrailing(parts[0], `:`)
 

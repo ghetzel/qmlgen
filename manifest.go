@@ -151,7 +151,7 @@ func (self *Manifest) refreshGlobalImports() error {
 		if filepath.Base(path) == ModuleSpecFilename {
 			if spec, err := LoadModuleSpec(path); err == nil {
 				if spec.Global {
-					self.AddGlobalImportPath(filepath.Dir(self.rel(path)))
+					self.AddGlobalImportPath(filepath.Dir(info.Name()))
 				}
 			} else {
 				return fmt.Errorf("manifest: invalid module spec %s: %v", path, err)
@@ -197,7 +197,7 @@ func (self *Manifest) Append(path string, fi ...os.FileInfo) error {
 			case ModuleSpecFilename:
 				if spec, err := LoadModuleSpec(path); err == nil {
 					if spec.Global {
-						self.AddGlobalImportPath(filepath.Dir(relPath))
+						self.AddGlobalImportPath(filepath.Dir(path))
 					}
 				} else {
 					return fmt.Errorf("manifest: invalid module spec %s: %v", path, err)

@@ -117,8 +117,7 @@ func (self *Module) writeModuleQml(rootDir string, globalImports []string) error
 	parentDir := filepath.Dir(qmlfile)
 
 	// no matter what, make sure the rootDir is always a global import
-	absRootDir, _ := filepath.Abs(rootDir)
-	globalImports = append(globalImports, absRootDir)
+	globalImports = append(globalImports, `/`)
 
 	if err := os.MkdirAll(parentDir, 0755); err == nil {
 		if defn := self.Definition; defn != nil {
@@ -145,31 +144,24 @@ func (self *Module) writeModuleQml(rootDir string, globalImports []string) error
 
 				// add paths that are supposed to be exposed to every module
 				for _, gi := range globalImports {
-					if !filepath.IsAbs(gi) {
-						gi, _ = filepath.Abs(filepath.Join(rootDir, gi))
+					switch gi {
+					case `.`, ``:
+						continue
+					case `/`:
+						gi = `` // to get around the leading slash we add in the fmt below
 					}
 
-					if fileutil.DirExists(gi) {
-						if rel, err := filepath.Rel(parentDir, gi); err == nil {
-							switch rel {
-							case `.`, ``:
-								break
-							default:
-								if stmt, err := toImportStatement(rel); err == nil {
-									log.Debugf("    %s", stmt)
-									out.WriteString(stmt + "\n")
-								} else {
-									return fmt.Errorf("module %q: import %s: %s", self.Name, rel, err)
-								}
-							}
-						} else {
-							log.Warningf("could not find relative from %q to %q: %v", qmlfile, gi, err)
-						}
+					gi = fmt.Sprintf("qrc:/%s", gi)
+
+					if stmt, err := toImportStatement(gi); err == nil {
+						log.Debugf("    %s", stmt)
+						out.WriteString(stmt + "\n")
+					} else {
+						return fmt.Errorf("module %q: import %s: %s", self.Name, gi, err)
 					}
 				}
 
 				// import the current directory
-				log.Debugf("    import %q", `.`)
 				out.WriteString(fmt.Sprintf("import %q\n", `.`))
 
 				log.Debugf("  type: %v", defn.Type)
