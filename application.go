@@ -14,6 +14,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/ghetzel/diecast"
 	"github.com/ghetzel/go-stockutil/convutil"
 	"github.com/ghetzel/go-stockutil/executil"
 	"github.com/ghetzel/go-stockutil/fileutil"
@@ -52,7 +53,13 @@ func init() {
 }
 
 type BuildOptions struct {
-	QT []string `yaml:"qt" json:"qt"`
+	Target  string   `yaml:"target"  json:"target"`
+	DestDir string   `yaml:"destdir" json:"destdir"`
+	QT      []string `yaml:"qt"      json:"qt"`
+	Plugins []string `yaml:"plugins" json:"plugins"`
+	Sources []string `yaml:"sources" json:"sources"`
+	Headers []string `yaml:"headers" json:"headers"`
+	Trailer string   `yaml:"trailer" json:"trailer"`
 }
 
 type Application struct {
@@ -300,6 +307,16 @@ func (self *Application) writeQrc(intoDir string) error {
 func (self *Application) writeAutogenAssets(intoDir string) error {
 	fs := FS(false)
 
+	buildOptions := self.BuildOptions
+
+	if buildOptions == nil {
+		buildOptions = new(BuildOptions)
+	}
+
+	buildOptions.QT = sliceutil.UniqueStrings(
+		append(buildOptions.QT, `gui`, `qml`, `quick`, `quickcontrols2`, `network`, `svg`, `widgets`),
+	)
+
 	for file := range maputil.M(_escData).Iter(maputil.IterOptions{
 		SortKeys: true,
 	}) {
@@ -309,12 +326,35 @@ func (self *Application) writeAutogenAssets(intoDir string) error {
 
 		if src, err := fs.Open(file.K); err == nil {
 			defer src.Close()
+			var srcrdr io.Reader = src
 			dstfile := filepath.Join(intoDir, file.K)
+
+			if filepath.Ext(file.K) == `.tmpl` {
+				tmpl := diecast.NewTemplate(file.K, diecast.TextEngine)
+				tmpl.Funcs(diecast.GetStandardFunctions(nil))
+
+				if err := tmpl.ParseFrom(src); err == nil {
+					out := bytes.NewBuffer(nil)
+
+					log.Debugf("autogen: rendering template %s", dstfile)
+
+					if err := tmpl.Render(out, map[string]interface{}{
+						`build`: maputil.M(buildOptions).MapNative(`yaml`),
+					}, ``); err != nil {
+						return fmt.Errorf("render %s: %v", file.K, err)
+					}
+
+					dstfile = strings.TrimSuffix(dstfile, `.tmpl`)
+					srcrdr = out
+				} else {
+					return err
+				}
+			}
 
 			if dst, err := os.Create(dstfile); err == nil {
 				defer dst.Close()
 
-				if n, err := io.Copy(dst, src); err == nil {
+				if n, err := io.Copy(dst, srcrdr); err == nil {
 					log.Debugf("autogen: wrote %s (%d bytes)", dstfile, n)
 				} else {
 					return err
