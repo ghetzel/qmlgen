@@ -69,12 +69,12 @@ int main(int argc, char **argv)
     }
 
     qmlRegisterSingletonType<QmlEnvironmentVariable>(
-        "Hydra", 1, 0,
+        "Builtin", 1, 0,
         "EnvironmentVariable",
         qmlenvironmentvariable_singletontype_provider);
 
     qmlRegisterSingletonType<QmlCursor>(
-        "Hydra", 1, 0,
+        "Builtin", 1, 0,
         "Cursor",
         qmlcursor_singletontype_provider);
 

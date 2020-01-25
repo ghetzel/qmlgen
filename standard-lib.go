@@ -8,6 +8,7 @@ func (self *Application) getBuiltinModules() []*Module {
 			Imports: []string{
 				`QtQuick 2.0`,
 				`QtQuick.Window 2.0`,
+				`Builtin 1.0`,
 			},
 			Definition: &Component{
 				Type: `Item`,
@@ -196,6 +197,10 @@ func (self *Application) getBuiltinModules() []*Module {
 					{
 						Name:       `init`,
 						Definition: `console.debug("Hydra v" + Hydra.version + " initialized")`,
+					},
+					{
+						Name:       `env`,
+						Definition: `return EnvironmentVariable.value(arguments[0], arguments[1] || '')`,
 					},
 					{
 						Name:       `vw`,

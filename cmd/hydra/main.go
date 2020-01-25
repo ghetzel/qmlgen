@@ -23,12 +23,7 @@ func main() {
 			Value:  `info`,
 			EnvVar: `LOGLEVEL`,
 		},
-		cli.StringFlag{
-			Name:   `output-dir, o`,
-			Usage:  `The output directory to write the QML to.`,
-			Value:  hydra.DefaultOutputDirectory,
-			EnvVar: `HYDRA_OUTPUT_DIR`,
-		},
+
 		cli.StringFlag{
 			Name:   `app-qrc`,
 			Usage:  `The name of the Qt Resource input manifest.`,
@@ -82,6 +77,10 @@ func main() {
 			Name:  `autobuild, B`,
 			Usage: `Whether to automatically compile the generated QML into a single binary.`,
 		},
+		cli.BoolFlag{
+			Name:  `preserve, P`,
+			Usage: `Whether to skip deleting builddir before building.`,
+		},
 	}
 
 	app.Before = func(c *cli.Context) error {
@@ -91,74 +90,106 @@ func main() {
 
 	app.Commands = []cli.Command{
 		{
-			Name:  `generate`,
-			Usage: `Generate a portable application manifest from the given directory.`,
+			Name:      `build`,
+			Usage:     `Generate all QML from the Hydra YAML source directory`,
+			ArgsUsage: `[URL_OR_ENTRYPOINT_FILENAME]`,
 			Flags: []cli.Flag{
 				cli.StringFlag{
-					Name:  `output, o`,
-					Usage: `The name of the file to write the manifest to.`,
-					Value: hydra.ManifestFilename,
+					Name:  `srcdir, s`,
+					Usage: `The directory containing the application source YAML files and entrypoint file.`,
+					Value: hydra.DefaultSourceDir,
 				},
-				cli.BoolFlag{
-					Name:  `bundle, b`,
-					Usage: `Generate a compressed application bundle containing the files listed in the manifest.`,
+				cli.StringFlag{
+					Name:  `entrypoint, e`,
+					Usage: `The main file used to start the application.`,
+					Value: hydra.DefaultEntrypointFilename,
+				},
+				cli.StringFlag{
+					Name:  `destdir, d`,
+					Usage: `Where the generated QML and assets should be placed.`,
+					Value: hydra.DefaultBuildDir,
 				},
 			},
 			Action: func(c *cli.Context) {
-				from := sliceutil.OrString(c.Args().First(), `.`)
+				if app, err := hydra.Load(
+					c.Args().First(),
+					filepath.Join(c.String(`srcdir`), c.String(`entrypoint`)),
+				); err == nil {
+					log.Debugf("loaded from: %s", app.SourceLocation)
 
-				if manifest, err := hydra.CreateManifest(from); err == nil {
-					if c.Bool(`bundle`) {
-						bundleFile := filepath.Join(filepath.Dir(c.String(`output`)), `app.tar.gz`)
+					log.FatalIf(app.Build(hydra.BuildOptions{
+						DestDir: c.String(`destdir`),
+					}))
+				} else {
+					log.Fatal(err)
+				}
+			},
+		}, {
+			Name:      `compile`,
+			ArgsUsage: `[ENTRYPOINT_IN_BUILDDIR]`,
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  `builddir, s`,
+					Usage: `The directory containing the already-built application.`,
+					Value: hydra.DefaultBuildDir,
+				},
+				cli.StringFlag{
+					Name:  `cachedir, c`,
+					Usage: `Where intermediate build files should be placed.`,
+					Value: hydra.DefaultCacheDir,
+				},
+				cli.StringFlag{
+					Name:  `distdir, d`,
+					Usage: `Where the compiled binaries and assets should be placed.`,
+					Value: hydra.DefaultCompileDir,
+				},
+				cli.StringFlag{
+					Name:  `entrypoint, e`,
+					Usage: `The main file used to start the application.`,
+					Value: hydra.DefaultEntrypointFilename,
+				},
+			},
+			Action: func(c *cli.Context) {
+				entrypoint := sliceutil.OrString(
+					c.Args().First(),
+					filepath.Join(c.String(`builddir`), c.String(`entrypoint`)),
+				)
 
-						// generate bundle archive
-						log.FatalIf(manifest.Bundle(bundleFile))
+				if app, err := hydra.Load(entrypoint); err == nil {
 
-						// replace manifest with a new one containing only the archive we just created
-						bundleManifest := hydra.NewManifest(filepath.Dir(bundleFile))
-						bundleManifest.Append(bundleFile)
-						bundleManifest.Assets[0].ArchiveFileCount = manifest.FileCount
-						bundleManifest.Assets[0].UncompressedSize = manifest.TotalSize
-						manifest = bundleManifest
-					}
-
-					log.FatalIf(manifest.WriteFile(c.String(`output`)))
+					log.FatalIf(app.Compile(hydra.CompileOptions{
+						DestDir: c.String(`destdir`),
+					}))
 				} else {
 					log.Fatal(err)
 				}
 			},
 		},
-	}
+		// {
+		// 	Name:  `bundle`,
+		// 	Usage: `Package a generated and/or compiled application for distribution.`,
+		// 	Action: func(c *cli.Context) {
+		// 		if manifest, err := hydra.CreateManifest(from); err == nil {
+		// 			if c.Bool(`bundle`) {
+		// 				bundleFile := filepath.Join(filepath.Dir(c.String(`output`)), `app.tar.gz`)
 
-	app.Action = func(c *cli.Context) {
-		appcfg := c.Args().First()
+		// 				// generate bundle archive
+		// 				log.FatalIf(manifest.Bundle(bundleFile))
 
-		if app, err := hydra.Load(appcfg); err == nil {
-			if srcloc := c.String(`location`); srcloc != `` {
-				app.SourceLocation = srcloc
-			}
+		// 				// replace manifest with a new one containing only the archive we just created
+		// 				bundleManifest := hydra.NewManifest(filepath.Dir(bundleFile))
+		// 				bundleManifest.Append(bundleFile)
+		// 				bundleManifest.Assets[0].ArchiveFileCount = manifest.FileCount
+		// 				bundleManifest.Assets[0].UncompressedSize = manifest.TotalSize
+		// 				manifest = bundleManifest
+		// 			}
 
-			log.Debugf("Loaded app: location=%v", app.SourceLocation)
-
-			log.FatalIf(app.Generate(hydra.GenerateOptions{
-				DestDir:   c.String(`output-dir`),
-				Autobuild: c.Bool(`autobuild`),
-			}))
-
-			if c.Bool(`run`) {
-				log.FatalIf(hydra.RunWithOptions(c.String(`output-dir`), hydra.RunOptions{
-					QmlsceneBin:           c.String(`qml-runner`),
-					QmlsceneArgs:          argsAfter(c, `--`),
-					WaitForNetworkTimeout: c.Duration(`wait-for-network-timeout`),
-					WaitForNetworkAddress: c.String(`wait-for-network-address`),
-					ServeAddress:          c.String(`address`),
-					ServeRoot:             c.String(`server-root`),
-					ContainmentStrategy:   hydra.RunContainmentFromString(c.String(`containment-strategy`)),
-				}))
-			}
-		} else {
-			log.Fatal(err)
-		}
+		// 			log.FatalIf(manifest.WriteFile(c.String(`output`)))
+		// 		} else {
+		// 			log.Fatal(err)
+		// 		}
+		// 	},
+		// },
 	}
 
 	app.Run(os.Args)

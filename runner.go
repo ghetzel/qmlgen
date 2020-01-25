@@ -59,7 +59,7 @@ func (self *RunOptions) Valid() error {
 func RunWithOptions(fromDir string, options RunOptions) error {
 	if err := options.Valid(); err == nil {
 		absBuildDir, _ := filepath.Abs(fromDir)
-		entrypoint := filepath.Join(fromDir, fileutil.SetExt(EntrypointFilename, `.qml`))
+		entrypoint := filepath.Join(fromDir, fileutil.SetExt(DefaultEntrypointFilename, `.qml`))
 
 		// wait for network
 		if netwait := options.WaitForNetworkTimeout; netwait != 0 {

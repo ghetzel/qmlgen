@@ -15,6 +15,7 @@ import (
 	"unicode"
 
 	"github.com/ghetzel/diecast"
+	"github.com/ghetzel/go-defaults"
 	"github.com/ghetzel/go-stockutil/convutil"
 	"github.com/ghetzel/go-stockutil/executil"
 	"github.com/ghetzel/go-stockutil/fileutil"
@@ -27,24 +28,33 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-const EntrypointFilename string = `app.yaml`
 const ManifestFilename string = `manifest.yaml`
 const ModuleSpecFilename string = `module.yaml`
 const AppQrcFile = `app.qrc`
 const ErrorContextLines int = 5
 
-var DefaultOutputDirectory = executil.Env(`HYDRA_OUTPUT_DIR`, `build`)
+var DefaultQtModules = []string{
+	`gui`,
+	`network`,
+	`qml`,
+	`quick`,
+	`quickcontrols2`,
+	`svg`,
+	`widgets`,
+}
+
+var DefaultSourceDir = executil.Env(`HYDRA_SRCDIR`, `src`)
+var DefaultBuildDir = executil.Env(`HYDRA_BUILDDIR`, `build`)
+var DefaultCacheDir = executil.Env(`HYDRA_CACHEDIR`, `cache`)
+var DefaultCompileDir = executil.Env(`HYDRA_DISTDIR`, `dist`)
+var DefaultEntrypointFilename string = `app.yaml`
+
 var Domain = executil.Env(`HYDRA_HOST`, `hydra.local`)
 var Environment = executil.Env(`HYDRA_ENV`)
 var ID = executil.Env(`HYDRA_ID`)
 var Hostname, _ = os.Hostname()
 var Client = &http.Client{
 	Timeout: 10 * time.Second,
-}
-
-type GenerateOptions struct {
-	DestDir   string
-	Autobuild bool
 }
 
 func init() {
@@ -54,20 +64,29 @@ func init() {
 }
 
 type BuildOptions struct {
-	Target  string   `yaml:"target"  json:"target"`
-	DestDir string   `yaml:"destdir" json:"destdir"`
-	QT      []string `yaml:"qt"      json:"qt"`
-	Plugins []string `yaml:"plugins" json:"plugins"`
-	Sources []string `yaml:"sources" json:"sources"`
-	Headers []string `yaml:"headers" json:"headers"`
-	Trailer string   `yaml:"trailer" json:"trailer"`
+	SourceDir string `yaml:"srcdir"  json:"srcdir"  default:"app"`
+	DestDir   string `yaml:"destdir" json:"destdir" default:"build"`
+}
+
+type CompileOptions struct {
+	PreserveDestDir bool     `yaml:"-"`
+	Target          string   `yaml:"target"   json:"target"   default:"app"`
+	SourceDir       string   `yaml:"srcdir"   json:"srcdir"   default:"build"`
+	DestDir         string   `yaml:"destdir"  json:"destdir"  default:"dist"`
+	CacheDir        string   `yaml:"cachedir" json:"cachedir" default:"cache"`
+	QT              []string `yaml:"qt"       json:"qt"`
+	Plugins         []string `yaml:"plugins"  json:"plugins"`
+	Sources         []string `yaml:"sources"  json:"sources"`
+	Headers         []string `yaml:"headers"  json:"headers"`
+	Trailer         string   `yaml:"trailer"  json:"trailer"`
 }
 
 type Application struct {
 	Module         `yaml:",inline"`
-	SourceLocation string        `yaml:"location,omitempty" json:"location,omitempty"`
-	Manifest       *Manifest     `yaml:"manifest,omitempty" json:"manifest,omitempty"`
-	BuildOptions   *BuildOptions `yaml:"build,omitempty"    json:"build,omitempty"`
+	SourceLocation string          `yaml:"location,omitempty" json:"location,omitempty"`
+	Manifest       *Manifest       `yaml:"manifest,omitempty" json:"manifest,omitempty"`
+	BuildOptions   *BuildOptions   `yaml:"build,omitempty"  json:"build,omitempty"`
+	CompileOptions *CompileOptions `yaml:"compile,omitempty"  json:"compile,omitempty"`
 	filename       string
 }
 
@@ -166,17 +185,17 @@ func Load(locations ...string) (*Application, error) {
 	var candidates []string
 
 	if len(locations) == 0 {
-		candidates = append(candidates, Environment+`.`+EntrypointFilename)
-		candidates = append(candidates, EntrypointFilename)
+		candidates = append(candidates, Environment+`.`+DefaultEntrypointFilename)
+		candidates = append(candidates, DefaultEntrypointFilename)
 
-		candidates = append(candidates, filepath.Join(DefaultOutputDirectory, Environment+`.`+EntrypointFilename))
-		candidates = append(candidates, filepath.Join(DefaultOutputDirectory, EntrypointFilename))
+		candidates = append(candidates, filepath.Join(DefaultBuildDir, Environment+`.`+DefaultEntrypointFilename))
+		candidates = append(candidates, filepath.Join(DefaultBuildDir, DefaultEntrypointFilename))
 
-		candidates = append(candidates, `~/.config/hydra/`+Environment+`.`+EntrypointFilename)
-		candidates = append(candidates, `~/.config/hydra/`+EntrypointFilename)
+		candidates = append(candidates, `~/.config/hydra/`+Environment+`.`+DefaultEntrypointFilename)
+		candidates = append(candidates, `~/.config/hydra/`+DefaultEntrypointFilename)
 
-		candidates = append(candidates, `/etc/hydra/`+Environment+`.`+EntrypointFilename)
-		candidates = append(candidates, `/etc/hydra/`+EntrypointFilename)
+		candidates = append(candidates, `/etc/hydra/`+Environment+`.`+DefaultEntrypointFilename)
+		candidates = append(candidates, `/etc/hydra/`+DefaultEntrypointFilename)
 
 		for _, scheme := range []string{
 			`https`,
@@ -184,7 +203,7 @@ func Load(locations ...string) (*Application, error) {
 		} {
 			for _, entrypoint := range []string{
 				ManifestFilename,
-				EntrypointFilename,
+				DefaultEntrypointFilename,
 			} {
 				candidates = append(candidates, fmt.Sprintf(
 					"%s://%s/%s?env=%s&id=%s&host=%s",
@@ -305,18 +324,26 @@ func (self *Application) writeQrc(intoDir string) error {
 	}
 }
 
-func (self *Application) writeAutogenAssets(intoDir string) error {
+func (self *Application) writeAutogenAssets(options CompileOptions) error {
 	fs := FS(false)
 
-	buildOptions := self.BuildOptions
-
-	if buildOptions == nil {
-		buildOptions = new(BuildOptions)
-	}
-
-	buildOptions.QT = sliceutil.UniqueStrings(
-		append(buildOptions.QT, `gui`, `qml`, `quick`, `quickcontrols2`, `network`, `svg`, `widgets`),
+	options.QT = sliceutil.UniqueStrings(
+		append(options.QT, DefaultQtModules...),
 	)
+
+	// if v, err := filepath.Rel(options.DestDir, options.CacheDir); err == nil {
+	// 	options.CacheDir = v
+	// } else {
+	// 	return err
+	// }
+
+	// if v, err := filepath.Rel(options.DestDir, options.SourceDir); err == nil {
+	// 	options.SourceDir = v
+	// } else {
+	// 	return err
+	// }
+
+	// options.DestDir = `.`
 
 	for file := range maputil.M(_escData).Iter(maputil.IterOptions{
 		SortKeys: true,
@@ -328,7 +355,7 @@ func (self *Application) writeAutogenAssets(intoDir string) error {
 		if src, err := fs.Open(file.K); err == nil {
 			defer src.Close()
 			var srcrdr io.Reader = src
-			dstfile := filepath.Join(intoDir, file.K)
+			dstfile := filepath.Join(options.DestDir, file.K)
 
 			if filepath.Ext(file.K) == `.tmpl` {
 				tmpl := diecast.NewTemplate(file.K, diecast.TextEngine)
@@ -340,7 +367,7 @@ func (self *Application) writeAutogenAssets(intoDir string) error {
 					log.Debugf("autogen: rendering template %s", dstfile)
 
 					if err := tmpl.Render(out, map[string]interface{}{
-						`build`: maputil.M(buildOptions).MapNative(`yaml`),
+						`compile`: maputil.M(options).MapNative(`yaml`),
 					}, ``); err != nil {
 						return fmt.Errorf("render %s: %v", file.K, err)
 					}
@@ -372,41 +399,43 @@ func (self *Application) writeAutogenAssets(intoDir string) error {
 }
 
 // Retrieve the files from this application's manifest and generate the final QML application.
-func (self *Application) Generate(options GenerateOptions) error {
-	intoDir := options.DestDir
+func (self *Application) Build(options BuildOptions) error {
+	defaults.SetDefaults(&options)
 
-	os.RemoveAll(intoDir)
-
-	if err := os.MkdirAll(intoDir, 0700); err != nil {
+	if err := os.RemoveAll(options.DestDir); err != nil {
 		return err
 	}
 
-	if err := self.ensureManifest(intoDir); err == nil {
-		log.Infof("Generating application into directory: %s", intoDir)
+	if err := os.MkdirAll(options.DestDir, 0700); err != nil {
+		return err
+	}
+
+	if err := self.ensureManifest(options.DestDir); err == nil {
+		log.Infof("Building application in: %s", options.DestDir)
 
 		if self.Manifest.FileCount > 0 {
 			log.Debugf("manifest contains %d files in %v", self.Manifest.FileCount, convutil.Bytes(self.Manifest.TotalSize))
 		}
 
-		if err := self.Manifest.Fetch(self.SourceLocation, intoDir); err != nil {
+		if err := self.Manifest.Fetch(self.SourceLocation, options.DestDir); err != nil {
 			return fmt.Errorf("fetch: %v", err)
 		}
 
 		var out bytes.Buffer
 
-		if modules, err := self.Manifest.LoadModules(intoDir); err == nil {
+		if modules, err := self.Manifest.LoadModules(options.DestDir); err == nil {
 			// add standard library functions
 			modules = append(self.getBuiltinModules(), modules...)
 
 			// write all modules out to files
 			for _, submodule := range modules {
-				if err := submodule.writeModuleQml(intoDir, self.Manifest.GlobalImports); err != nil {
+				if err := submodule.writeModuleQml(options.DestDir, self.Manifest.GlobalImports); err != nil {
 					return err
 				}
 
 				// if we got an entrypoint *from* the manifest, we assume it's contents
 				// should supercede our own
-				if submodule.RelativePath() == EntrypointFilename {
+				if submodule.RelativePath() == DefaultEntrypointFilename {
 					self.Module = *submodule
 				}
 			}
@@ -453,7 +482,7 @@ func (self *Application) Generate(options GenerateOptions) error {
 			}
 
 			// write out the manifest we're working with
-			if mfile, err := os.Create(filepath.Join(intoDir, ManifestFilename)); err == nil {
+			if mfile, err := os.Create(filepath.Join(options.DestDir, ManifestFilename)); err == nil {
 				defer mfile.Close()
 
 				if err := yaml.NewEncoder(mfile).Encode(&Application{
@@ -468,80 +497,16 @@ func (self *Application) Generate(options GenerateOptions) error {
 			// write out the entrypoint file
 			if _, err := fileutil.WriteFile(
 				&out,
-				filepath.Join(intoDir, fileutil.SetExt(EntrypointFilename, `.qml`)),
+				filepath.Join(options.DestDir, fileutil.SetExt(DefaultEntrypointFilename, `.qml`)),
 			); err == nil {
 				// recursively generate all qmldirs
-				if err := self.writeQmlManifest(intoDir); err != nil {
+				if err := self.writeQmlManifest(options.DestDir); err != nil {
 					return err
 				}
 
 				// generate app.qrc
-				if err := self.writeQrc(intoDir); err != nil {
+				if err := self.writeQrc(options.DestDir); err != nil {
 					return err
-				}
-
-				// generate build files
-				if err := self.writeAutogenAssets(intoDir); err != nil {
-					return err
-				}
-
-				if options.Autobuild {
-					log.Infof("building application: %s/app", intoDir)
-
-					for _, program := range []string{
-						`qmake`,
-						`make`,
-					} {
-						cmd := executil.Command(program)
-						cmd.Dir = intoDir
-						cmd.OnStdout = func(line string, _ bool) {
-							if line != `` {
-								log.Debugf("[%s] %s", program, line)
-							}
-						}
-
-						cmd.OnStderr = func(line string, _ bool) {
-							if strings.HasPrefix(line, `Error compiling qml file: `) {
-
-								if parts := strings.Split(line, `:`); len(parts) > 4 {
-									qmlfile := filepath.Join(intoDir, strings.TrimSpace(parts[1]))
-									lineno := int(typeutil.Int(parts[2]))
-									charno := int(typeutil.Int(parts[3]))
-
-									if lineno > 0 {
-										log.Errorf("[%s] %s", program, line)
-										log.Debugf("[%s]      \u256d%s", program, strings.Repeat("\u2500", 69))
-
-										for l := (lineno - ErrorContextLines); l < (lineno + ErrorContextLines); l++ {
-											if ctx := fileutil.ShouldGetNthLine(qmlfile, l); ctx != `` {
-												if l == lineno {
-													log.Debugf("[%s]  %3d \u2502 ${red}%s${reset}", program, l, ctx)
-													log.Debugf("[%s]      \u2502 ${white+b}%s${reset}", program, strings.Repeat(` `, charno-1)+`^`)
-												} else {
-													log.Debugf("[%s]  %3d \u2502 %s", program, l, ctx)
-												}
-											}
-										}
-
-										log.Debugf("[%s]      \u2570%s", program, strings.Repeat("\u2500", 69))
-
-										return
-									}
-								}
-
-							} else if line != `` {
-								return
-							}
-
-							log.Errorf("[%s] %s", program, line)
-						}
-
-						log.Debugf("running command: %q", program)
-
-						if err := cmd.Run(); err != nil {
-							return err
-						}
-					}
 				}
 
 				return nil
@@ -551,6 +516,89 @@ func (self *Application) Generate(options GenerateOptions) error {
 		} else {
 			return fmt.Errorf("invalid root definition")
 		}
+	} else {
+		return err
+	}
+}
+
+func (self *Application) Compile(options CompileOptions) error {
+	defaults.SetDefaults(&options)
+
+	if err := self.ensureManifest(options.SourceDir); err == nil {
+		log.Infof(" Staging resources in: %s", options.CacheDir)
+		log.Infof("Compiling application: %s/%s", options.DestDir, options.Target)
+
+		os.RemoveAll(options.DestDir)
+
+		if err := os.MkdirAll(options.CacheDir, 0700); err != nil {
+			return err
+		}
+
+		if err := os.MkdirAll(options.DestDir, 0700); err != nil {
+			return err
+		}
+
+		// generate build files
+		if err := self.writeAutogenAssets(options); err != nil {
+			return err
+		}
+
+		for _, program := range []string{
+			`qmake`,
+			`make`,
+		} {
+			cmd := executil.Command(program)
+			cmd.Dir = options.DestDir
+			cmd.OnStdout = func(line string, _ bool) {
+				if line != `` {
+					log.Debugf("[%s] %s", program, line)
+				}
+			}
+
+			cmd.OnStderr = func(line string, _ bool) {
+				if strings.HasPrefix(line, `Error compiling qml file: `) {
+
+					if parts := strings.Split(line, `:`); len(parts) > 4 {
+						qmlfile := filepath.Join(options.DestDir, strings.TrimSpace(parts[1]))
+						lineno := int(typeutil.Int(parts[2]))
+						charno := int(typeutil.Int(parts[3]))
+
+						if lineno > 0 {
+							log.Errorf("[%s] %s", program, line)
+							log.Debugf("[%s]      \u256d%s", program, strings.Repeat("\u2500", 69))
+
+							for l := (lineno - ErrorContextLines); l < (lineno + ErrorContextLines); l++ {
+								if ctx := fileutil.ShouldGetNthLine(qmlfile, l); ctx != `` {
+									if l == lineno {
+										log.Debugf("[%s]  %3d \u2502 ${red}%s${reset}", program, l, ctx)
+										log.Debugf("[%s]      \u2502 ${white+b}%s${reset}", program, strings.Repeat(` `, charno-1)+`^`)
+									} else {
+										log.Debugf("[%s]  %3d \u2502 %s", program, l, ctx)
+									}
+								}
+							}
+
+							log.Debugf("[%s]      \u2570%s", program, strings.Repeat("\u2500", 69))
+
+							return
+						}
+					}
+
+				} else if line != `` {
+					return
+				}
+
+				log.Errorf("[%s] %s", program, line)
+			}
+
+			log.Debugf("running command: %q", program)
+
+			if err := cmd.Run(); err != nil {
+				return err
+			}
+		}
+
+		return nil
 	} else {
 		return err
 	}
