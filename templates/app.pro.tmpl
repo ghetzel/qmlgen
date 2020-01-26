@@ -1,35 +1,35 @@
-SRCDIR      = {{ or $.compile.srcdir `build` }}
-DESTDIR     = {{ or $.compile.destdir `dist` }}
-CACHEDIR    = {{ or $.compile.cachedir `cache` }}
+SRCDIR      = {{ or $.compile.srcdir `../build` }}
+DESTDIR     = {{ or $.compile.destdir `.` }}
+CACHEDIR    = {{ or $.compile.cachedir `../cache` }}
 TARGET      = {{ or $.compile.target `app` }}
 MAKEFILE    = $${DESTDIR}/Makefile
 OBJECTS_DIR = $${CACHEDIR}/obj
 MOC_DIR     = $${CACHEDIR}/moc
 RCC_DIR     = $${CACHEDIR}/rcc
 UI_DIR      = $${CACHEDIR}/ui
+
 RESOURCES  += $${SRCDIR}/app.qrc
+
 SOURCES    += main.cpp
 SOURCES    += QmlCursor.cpp
 SOURCES    += QmlEnvironmentVariable.cpp
-
-{{ range $v := sort $.compile.sources }}
+{{- range $v := sort $.compile.sources }}
 SOURCES    += {{ $v }}
-{{ end }}
+{{- end }}
 
 HEADERS    += QmlCursor.h
 HEADERS    += QmlEnvironmentVariable.h
-
-{{ range $v := sort $.compile.headers }}
+{{- range $v := sort $.compile.headers }}
 HEADERS    += {{ $v }}
-{{ end -}}
+{{- end }}
 
 {{ range $qt := sort $.compile.qt }}
 QT         += {{ $qt }}
-{{ end -}}
+{{- end }}
 
 {{ range $plugin := sort $.compile.plugins }}
 QTPLUGIN   += {{ $plugin }}
-{{ end -}}
+{{- end }}
 
 CONFIG     += qtquickcompiler
 CONFIG     += c++11

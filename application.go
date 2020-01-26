@@ -331,19 +331,23 @@ func (self *Application) writeAutogenAssets(options CompileOptions) error {
 		append(options.QT, DefaultQtModules...),
 	)
 
-	// if v, err := filepath.Rel(options.DestDir, options.CacheDir); err == nil {
-	// 	options.CacheDir = v
-	// } else {
-	// 	return err
-	// }
+	if v, err := filepath.Abs(options.CacheDir); err == nil {
+		options.CacheDir = v
+	} else {
+		return err
+	}
 
-	// if v, err := filepath.Rel(options.DestDir, options.SourceDir); err == nil {
-	// 	options.SourceDir = v
-	// } else {
-	// 	return err
-	// }
+	if v, err := filepath.Abs(options.SourceDir); err == nil {
+		options.SourceDir = v
+	} else {
+		return err
+	}
 
-	// options.DestDir = `.`
+	if v, err := filepath.Abs(options.DestDir); err == nil {
+		options.DestDir = v
+	} else {
+		return err
+	}
 
 	for file := range maputil.M(_escData).Iter(maputil.IterOptions{
 		SortKeys: true,

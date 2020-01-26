@@ -3,7 +3,9 @@ package hydra
 import (
 	"fmt"
 	"net"
+	"net/http"
 	"path/filepath"
+	"strings"
 
 	"github.com/ghetzel/diecast"
 	"github.com/ghetzel/go-stockutil/fileutil"
@@ -16,13 +18,7 @@ var DiecastConfig = `diecast.yml`
 func Serve(address string, rootDir string) error {
 	if _, port, err := net.SplitHostPort(address); err == nil {
 		serveDir := rootDir
-		dcCfg := filepath.Join(rootDir, DiecastConfig)
-
-		if filepath.IsAbs(ServeRoot) {
-			serveDir = ServeRoot
-		} else {
-			serveDir = filepath.Join(rootDir, ServeRoot)
-		}
+		dcCfg := filepath.Join(filepath.Dir(strings.TrimSuffix(rootDir, `/`)), DiecastConfig)
 
 		server := diecast.NewServer(serveDir)
 		server.Address = address
@@ -38,6 +34,10 @@ func Serve(address string, rootDir string) error {
 				return fmt.Errorf("server config: %v", err)
 			}
 		}
+
+		server.Get(`/ping`, func(w http.ResponseWriter, req *http.Request) {
+			w.Write([]byte(`pong`))
+		})
 
 		log.Infof("Serving %s at %s", serveDir, address)
 		return server.Serve()
