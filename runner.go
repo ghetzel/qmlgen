@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/ghetzel/go-stockutil/executil"
@@ -82,7 +83,9 @@ func RunWithOptions(fromDir string, options RunOptions) error {
 
 		qmlargs = append(qmlargs, options.QmlsceneArgs...)
 		qmlargs = append(qmlargs, filepath.Base(entrypoint))
-		errchan := make(chan error)
+
+		var errchan = make(chan error)
+		var dcid = fmt.Sprintf("hydra-%s", stringutil.UUID().Base58())
 
 		if srvaddr := options.ServeAddress; srvaddr != `` {
 			log.Debugf("starting HTTP server at %s", srvaddr)
@@ -148,6 +151,7 @@ func RunWithOptions(fromDir string, options RunOptions) error {
 					runner = cmd(``,
 						`docker`,
 						`run`,
+						`--name`, dcid,
 						`--rm`,
 						`--interactive`,
 						`--network`, `host`,
@@ -155,6 +159,7 @@ func RunWithOptions(fromDir string, options RunOptions) error {
 						`--volume`, `/tmp/.X11-unix:/tmp/.X11-unix`,
 						`--volume`, hydraXauth+`:/Xauthority`,
 						`--volume`, `/dev:/dev`,
+						`--env`, `TZ=`+executil.Env(`TZ`, `UTC`),
 						`--env`, `XAUTHORITY=/Xauthority`,
 						`--env`, `DISPLAY=`+xdisplay,
 						`--env`, `QT_QPA_PLATFORM=xcb`,
@@ -177,6 +182,17 @@ func RunWithOptions(fromDir string, options RunOptions) error {
 			log.Debugf("run[%s]: %s", runner.Dir, strings.Join(runner.Args, ` `))
 			errchan <- runner.Run()
 		}()
+
+		executil.TrapSignals(func(sig os.Signal) bool {
+			log.Noticef("Got signal %v, killing %s...", sig, dcid)
+
+			switch options.ContainmentStrategy {
+			case DockerXcbContainment:
+				executil.ShellCommand("docker kill " + dcid).Run()
+			}
+
+			return false
+		}, syscall.SIGINT, syscall.SIGTERM)
 
 		select {
 		case err := <-errchan:

@@ -261,8 +261,10 @@ func (self *Application) ensureManifest(rootDir string) error {
 				srcDir = filepath.Dir(self.SourceLocation)
 			} else if fileutil.DirExists(self.SourceLocation) {
 				srcDir = self.SourceLocation
+			} else if tmp, err := ioutil.TempDir(``, `hydra-`); err == nil {
+				srcDir = tmp
 			} else {
-				return fmt.Errorf("no manifest found and unable to determine source directory")
+				return err
 			}
 
 			if m, err := CreateManifest(srcDir); err == nil {
