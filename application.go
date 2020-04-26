@@ -24,6 +24,7 @@ import (
 	"github.com/ghetzel/go-stockutil/rxutil"
 	"github.com/ghetzel/go-stockutil/sliceutil"
 	"github.com/ghetzel/go-stockutil/stringutil"
+	"github.com/ghetzel/go-stockutil/structutil"
 	"github.com/ghetzel/go-stockutil/typeutil"
 	"gopkg.in/yaml.v2"
 )
@@ -527,6 +528,7 @@ func (self *Application) Build(options BuildOptions) error {
 
 func (self *Application) Compile(options CompileOptions) error {
 	defaults.SetDefaults(&options)
+	structutil.CopyNonZero(self.CompileOptions, &options)
 
 	if err := self.ensureManifest(options.SourceDir); err == nil {
 		log.Infof(" Staging resources in: %s", options.CacheDir)

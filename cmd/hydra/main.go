@@ -101,7 +101,6 @@ func main() {
 				)
 
 				if app, err := hydra.Load(entrypoint); err == nil {
-
 					log.FatalIf(app.Compile(hydra.CompileOptions{
 						DestDir: c.String(`destdir`),
 					}))
