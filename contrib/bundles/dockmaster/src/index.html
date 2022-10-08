@@ -1,0 +1,7 @@
+---
+switch:
+-   condition: '{{ not (isEmpty (get $.bindings.app `stack.containers`)) }}'
+    redirect:
+        url: "/containers/{{ get $.bindings.app `stack.containers.0.name` }}"
+---
+no stacks

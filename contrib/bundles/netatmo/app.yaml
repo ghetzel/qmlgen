@@ -1,0 +1,13 @@
+---
+name:   Netatmo Dashboard
+width:  1024
+height: 786
+
+backend:
+  address: 127.0.0.1:10130
+  header:
+    page:
+      netatmo:
+        client_id:     "6171b680e14e1970ec7e0abe"
+        client_secret: "pKz8E5gcbYuswEchzr4uSPVckATEDUcD4oXidp"
+        scopes:        "read_station read_thermostat read_homecoach"

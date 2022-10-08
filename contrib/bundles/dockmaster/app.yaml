@@ -1,0 +1,24 @@
+---
+name:   Example App
+width:  1024
+height: 786
+
+backend:
+  address: 127.0.0.1:3000
+stacks:
+  default:
+    name: Standard Server Stack
+    engine: script://runc
+    scripts:
+      runc: |
+        #!/usr/bin/env bash
+        exec docker run --rm -it "${HYDRA_IMAGE}" ${HYDRA_CMD}
+    containers:
+      - name: loggen
+        image: "ghetzel/diecast:latest"
+        cmd:   ["bash", "-c", 'curl -sSfL -o - https://dl.gary.cool/example.log | while read line; do echo "${line}" && sleep $$(( ${RANDOM} % 3 )).${RANDOM}; done']
+
+      - name: vscode
+        image: "gitpod/openvscode-server:latest"
+        ports:
+          9090/tcp: 3000
