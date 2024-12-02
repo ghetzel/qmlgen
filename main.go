@@ -15,7 +15,7 @@ func main() {
 	app := cli.NewApp()
 	app.Name = `hydra`
 	app.Usage = `do dev things`
-	app.Version = `0.1.0`
+	app.Version = `0.2.0`
 
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
