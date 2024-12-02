@@ -8,7 +8,7 @@ import (
 
 	"github.com/ghetzel/go-stockutil/log"
 	"github.com/ghetzel/go-stockutil/typeutil"
-	"github.com/webview/webview"
+	webview "github.com/webview/webview_go"
 )
 
 //go:embed lib/js/*.js
@@ -39,10 +39,13 @@ type Messagable interface {
 }
 
 type Window struct {
-	app     *App
-	view    webview.WebView
-	didInit bool
-	lasterr error
+	app        *App
+	view       webview.WebView
+	didInit    bool
+	lasterr    error
+	fullscreen bool
+	w          int
+	h          int
 }
 
 func CreateWindow(app *App) *Window {
@@ -80,6 +83,11 @@ func (self *Window) init() error {
 
 		self.SetTitle(self.app.Config.Name)
 		self.Resize(self.app.Config.Width, self.app.Config.Height)
+
+		if self.app.Config.Fullscreen {
+			self.Fullscreen(true)
+		}
+
 		self.Navigate(typeutil.OrString(self.app.Config.URL, AppDefaultURL))
 		self.didInit = true
 	}
@@ -93,25 +101,25 @@ func (self *Window) Run() error {
 	}
 
 	go log.FatalIf(self.app.Run(func(a *App) error {
-		go a.runStacks()
+		go a.Config.Services.Run()
 		return nil
 	}))
 
 	self.Navigate(typeutil.OrString(self.app.Config.URL, AppDefaultURL))
 	self.view.Run()
-	self.app.WaitForStackStop()
+	self.Wait()
 
 	return self.lasterr
 }
 
 func (self *Window) Destroy() error {
-	self.app.Stop()
+	self.app.Config.Services.Stop(false)
 	self.view.Destroy()
 	return nil
 }
 
 func (self *Window) Wait() {
-	self.app.WaitForStackStop()
+	self.app.Config.Services.Wait()
 	log.Debugf("window and all apps stopped")
 }
 
@@ -130,7 +138,21 @@ func (self *Window) Move(x int, y int) error {
 }
 
 func (self *Window) Resize(w int, h int) error {
+	self.w = w
+	self.h = h
 	self.view.SetSize(w, h, webview.HintNone)
+	return nil
+}
+
+func (self *Window) Fullscreen(on bool) error {
+	self.fullscreen = on
+
+	if self.fullscreen {
+		self.view.SetSize(0, 0, webview.HintMax&webview.HintFixed)
+	} else {
+		self.Resize(self.w, self.h)
+	}
+
 	return nil
 }
 
@@ -143,27 +165,6 @@ func (self *Window) Send(req *Message) (*Message, error) {
 	reply.SentAt = time.Now()
 
 	switch req.ID {
-	case `tail`:
-		if stack := self.app.GetStack(); stack != nil {
-			if name := req.Get(`container`).String(); name != `` {
-				if container, ok := stack.Container(name); ok {
-					var lines []*LogLine
-
-				LineLoop:
-					for i := 0; i < req.Get(`lines`, 1).NInt(); i++ {
-						select {
-						case line := <-container.Tail():
-							lines = append(lines, line)
-						default:
-							break LineLoop
-						}
-					}
-
-					reply.Set(`container`, name)
-					reply.Set(`lines`, lines)
-				}
-			}
-		}
 	case `log`:
 		var lvl = log.GetLevel(req.Get(`level`, `debug`).String())
 		log.Log(lvl, req.Get(`message`, `-- MARK --`).String())
@@ -179,29 +180,19 @@ func (self *Window) Send(req *Message) (*Message, error) {
 		err = self.Move(x, y)
 
 	case `start`, `stop`, `restart`:
-		if stack := self.app.GetStack(); stack != nil {
-			var containers []string
+		for _, program := range self.app.Config.Services.Manager.Programs() {
+			var e error
 
-			if container := req.Get(`container`).String(); container != `` {
-				containers = []string{container}
-			} else {
-				containers = stack.ContainerNames()
+			switch req.ID {
+			case `start`:
+				program.Start()
+			case `stop`:
+				program.Stop()
+			case `restart`:
+				program.Restart()
 			}
 
-			for _, container := range containers {
-				var e error
-
-				switch req.ID {
-				case `start`:
-					e = stack.StartContainer(container)
-				case `stop`:
-					e = stack.StopContainer(container)
-				case `restart`:
-					e = stack.RestartContainer(container)
-				}
-
-				err = log.AppendError(err, e)
-			}
+			err = log.AppendError(err, e)
 		}
 
 	default:

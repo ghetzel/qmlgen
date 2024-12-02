@@ -70,23 +70,22 @@ func (self *Message) Set(key string, value interface{}) {
 }
 
 type AppConfig struct {
-	URL     string            `yaml:"url,omitempty"     json:"url"`
-	Name    string            `yaml:"name"              json:"name"   default:"Hydra App"`
-	Width   int               `yaml:"width,omitempty"   json:"height" default:"800"`
-	Height  int               `yaml:"height,omitempty"  json:"width"  default:"600"`
-	Stacks  map[string]*Stack `yaml:"stacks,omitempty"  json:"stacks"`
-	Backend *diecast.Server   `yaml:"backend,omitempty" json:"backend"`
+	URL        string          `yaml:"url,omitempty"      json:"url"`
+	Name       string          `yaml:"name"               json:"name"       default:"Hydra App"`
+	Width      int             `yaml:"width,omitempty"    json:"height"     default:"800"`
+	Height     int             `yaml:"height,omitempty"   json:"width"      default:"600"`
+	Fullscreen bool            `yaml:"fullscreen"         json:"fullscreen" default:"false"`
+	Backend    *diecast.Server `yaml:"backend,omitempty"  json:"backend"`
+	Services   *ProcessManager `yaml:"services,omitempty" json:"services"`
 }
 
 type App struct {
-	Config        *AppConfig `json:"config"`
-	Stack         string     `json:"-"`
-	StackInstance *Stack     `json:"stack"`
-	window        Messagable
-	path          string
-	bundle        []byte
-	fs            vfs.FileSystem
-	messages      chan *Message
+	Config   *AppConfig `json:"config"`
+	window   Messagable
+	path     string
+	bundle   []byte
+	fs       vfs.FileSystem
+	messages chan *Message
 }
 
 func (self *App) SetWindow(win Messagable) {
@@ -132,64 +131,11 @@ func (self *App) Validate() error {
 		self.Config.Backend = new(diecast.Server)
 	}
 
-	if len(self.Config.Stacks) > 0 {
-		for name, stack := range self.Config.Stacks {
-			stack.ID = name
-
-			if err := stack.Validate(); err != nil {
-				return fmt.Errorf("bad stack %q: %v", name, err)
-			}
-		}
+	if self.Config.Services == nil {
+		self.Config.Services = new(ProcessManager)
 	}
 
-	self.Stack = typeutil.OrString(self.Stack, `default`)
 	self.messages = make(chan *Message, AppMessageBuffer)
-
-	return nil
-}
-
-// Stop the application stack and wait for everything to exit.
-func (self *App) Stop() error {
-	var merr error
-
-	if len(self.Config.Stacks) > 0 {
-		for _, stack := range self.Config.Stacks {
-			go func(s *Stack) {
-				log.Warningf("Stopping stack %q", s.ID)
-				log.AppendError(merr, s.Stop())
-			}(stack)
-		}
-	}
-
-	self.WaitForStackStop()
-	return merr
-}
-
-// Block until no containers in the app stack are still running.
-func (self *App) WaitForStackStop() {
-	if len(self.Config.Stacks) > 0 {
-		for _, stack := range self.Config.Stacks {
-			for stack.HasRunningContainers() {
-				time.Sleep(250 * time.Millisecond)
-			}
-		}
-	}
-}
-
-// Retrieve the current application stack, may return nil.
-func (self *App) GetStack() *Stack {
-	if stack, ok := self.Config.Stacks[self.Stack]; ok && stack != nil {
-		self.StackInstance = stack
-	}
-
-	return self.StackInstance
-}
-
-// Blocking start and run of the application stack (if configured).
-func (self *App) runStacks() error {
-	if stack := self.GetStack(); stack != nil {
-		return stack.Run()
-	}
 
 	return nil
 }
@@ -197,6 +143,11 @@ func (self *App) runStacks() error {
 // Blocking start and run of the application and all containers.
 func (self *App) Run(workers ...AppFunc) error {
 	if err := self.Validate(); err != nil {
+		return err
+	}
+
+	// get services going (if any)
+	if err := self.Config.Services.Initialize(); err != nil {
 		return err
 	}
 
@@ -228,7 +179,7 @@ func (self *App) Run(workers ...AppFunc) error {
 
 func (self *App) registerHydraApi(dc *diecast.Server) {
 	dc.Delete(`/hydra`, func(w http.ResponseWriter, req *http.Request) {
-		go self.Stop()
+		go self.Config.Services.Stop(false)
 		httputil.RespondJSON(w, nil, http.StatusAccepted)
 	})
 
@@ -256,27 +207,6 @@ func (self *App) registerHydraApi(dc *diecast.Server) {
 		httputil.RespondJSON(w, self)
 	})
 
-	dc.Get(`/hydra/v1/stack`, func(w http.ResponseWriter, req *http.Request) {
-		if stack := self.GetStack(); stack != nil {
-			httputil.RespondJSON(w, stack)
-		} else {
-			httputil.RespondJSON(w, fmt.Errorf("no stacks configured"), 404)
-		}
-	})
-
-	dc.Get(`/hydra/v1/stack/containers/:container`, func(w http.ResponseWriter, req *http.Request) {
-		if stack := self.GetStack(); stack != nil {
-			var name = dc.P(req, `container`).String()
-			if container, ok := stack.Container(name); ok {
-				httputil.RespondJSON(w, container)
-			} else {
-				httputil.RespondJSON(w, fmt.Errorf("no such container %q", name), 404)
-			}
-		} else {
-			httputil.RespondJSON(w, fmt.Errorf("no stacks configured"), 404)
-		}
-	})
-
 	dc.Post(`/hydra/v1/message`, func(w http.ResponseWriter, req *http.Request) {
 		var msg = new(Message)
 
@@ -294,33 +224,6 @@ func (self *App) registerHydraApi(dc *diecast.Server) {
 			}
 		} else {
 			httputil.RespondJSON(w, err)
-		}
-	})
-
-	dc.Get(`/hydra/v1/stack/containers/:container/logs`, func(w http.ResponseWriter, req *http.Request) {
-		if stack := self.GetStack(); stack != nil {
-			var name = dc.P(req, `container`).String()
-
-			if container, ok := stack.Container(name); ok {
-				var lines = make([]*LogLine, 0)
-				var max = int(httputil.QInt(req, `count`, 10))
-
-			LineLoop:
-				for i := 0; i < max; i++ {
-					select {
-					case line := <-container.Tail():
-						lines = append(lines, line)
-					default:
-						break LineLoop
-					}
-				}
-
-				httputil.RespondJSON(w, lines)
-			} else {
-				httputil.RespondJSON(w, fmt.Errorf("no such container %q", name))
-			}
-		} else {
-			httputil.RespondJSON(w, fmt.Errorf("no active stack"))
 		}
 	})
 }

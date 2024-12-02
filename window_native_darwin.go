@@ -1,3 +1,5 @@
+//go:build ignore
+
 package main
 
 import (
@@ -26,7 +28,7 @@ func (self *NativeWindow) Pointer() unsafe.Pointer {
 		w.MakeKeyAndOrderFront(w)
 
 		self.nswindow = &w
-	} else {
-		return self.nswindow
 	}
+
+	return self.nswindow
 }

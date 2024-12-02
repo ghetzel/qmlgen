@@ -11,7 +11,7 @@ GOARCH       = amd64
 build: bin/hydra
 
 deps:
-	@go get
+	@go get ./...
 
 fmt:
 	@gofmt -w .
